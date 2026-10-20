@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from vcarve_flat.geom import (
-    VBit, depth_for_radius, distances_to_segments, flat_radius, limit_depth, order_paths, rest_stepover,
+    VBit, depth_for_radius, distances_to_segments, drop_collinear, flat_radius, limit_depth, order_paths, rest_stepover,
     simplify,
 )
 
@@ -94,3 +94,11 @@ def test_simplify_closed_square():
 def test_simplify_short_unchanged(n):
     pts = np.arange(n * 3, dtype=float).reshape(n, 3)
     assert np.array_equal(simplify(pts, 0.1), pts)
+
+
+def test_drop_collinear():
+    # closed loop (last point not repeated): square with collinear points on two sides and at a corner seam
+    loop = np.array([(0, 0), (1, 0), (2, 0), (4, 0), (4, 4), (0, 4), (0, 2)], dtype=float)
+    assert drop_collinear(loop, 1e-7).tolist() == [[0, 0], [4, 0], [4, 4], [0, 4]]
+    tri = np.array([(0, 0), (1, 0), (0.5, 1e-3)])  # 1e-3 off the chord: a real corner, kept
+    assert len(drop_collinear(tri, 1e-7)) == 3

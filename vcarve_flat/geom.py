@@ -63,6 +63,17 @@ def distances_to_segments(points: np.ndarray, segments: np.ndarray) -> np.ndarra
     return out
 
 
+def drop_collinear(loop: np.ndarray, eps: float) -> np.ndarray:
+    """Closed 2D loop (last point not repeated) without points closer than eps to the chord of their
+    neighbours. Collinear boundary points give Path.Voronoi degenerate parabolic edges."""
+    loop = np.asarray(loop, float)
+    a = np.roll(loop, -1, 0) - np.roll(loop, 1, 0)
+    b = loop - np.roll(loop, 1, 0)
+    cross = np.abs(a[:, 0] * b[:, 1] - a[:, 1] * b[:, 0])
+    keep = cross > eps * np.linalg.norm(a, axis=1)
+    return loop[keep] if keep.sum() >= 3 else loop
+
+
 def rest_stepover(vbit: VBit, scallop: float) -> float:
     return vbit.tip_diameter + 2 * scallop * math.tan(vbit.half_angle)
 

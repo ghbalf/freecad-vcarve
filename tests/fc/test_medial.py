@@ -27,9 +27,27 @@ def ring_face():  # Task 3 fixture: 40x20 rectangle with a r=4 hole at (10, 10)
 
 RECT = poly_face([(0, 0), (40, 0), (40, 20), (0, 20)])
 L_FACE = poly_face([(0, 0), (30, 0), (30, 8), (8, 8), (8, 30), (0, 30)])
+# Letter "A" of DejaVu Sans Bold 50 mm from a user's Draft ShapeString -> sketch (FreeCAD 1.1.4): the
+# hole's left edge is split into collinear pieces, which gave a degenerate Voronoi parabola
+A_OUTER = [(50.564671391287, 39.965727300281), (70.720921391287, 39.965727300281),
+           (73.868242819858, 30.822870157424), (86.825832105573, 30.822870157424),
+           (68.310207105573, 80.822870157424), (52.941903534144, 80.822870157424),
+           (34.426278534144, 30.822870157424), (47.383867819858, 30.822870157424)]
+A_HOLE = [(67.473153534144, 49.251441585995), (53.778957105573, 49.251441585995),
+          (53.792363041677, 49.290242506754), (53.805768977782, 49.329043427513),
+          (53.832580849992, 49.406645269031), (53.886204594412, 49.561848952067),
+          (53.993452083251, 49.872256318138), (54.20794706093, 50.493071050281),
+          (54.636937016287, 51.734700514567), (55.494916927001, 54.217959443138),
+          (57.21087674843, 59.184477300281), (60.642796391287, 69.117513014567)]
 
 
 class MedialTests(unittest.TestCase):
+    def test_collinear_boundary_points(self):
+        wires = [Part.makePolygon([V(x, y, 0) for x, y in pts + pts[:1]]) for pts in (A_OUTER, A_HOLE)]
+        face, = faces_from_loops("A", wires)
+        paths = carve_polylines(face, VBit(10, 90, 0.1), 0.0, 1.0, **KW)
+        self.assertTrue(paths)
+
     def test_rectangle_depth(self):
         vbit = VBit(10, 90, 0)
         paths = carve_polylines(RECT, vbit, 0.0, 5.0, **KW)

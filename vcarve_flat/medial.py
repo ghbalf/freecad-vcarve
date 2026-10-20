@@ -7,13 +7,14 @@ from Path.Op.Vcarve import (BORDERLINE, COLINEAR, EXTERIOR1, EXTERIOR2, PRIMARY,
                             _collectVoronoiWires)
 
 from .clearing import offset_faces
-from .geom import depth_for_radius, distances_to_segments, flat_radius, simplify
+from .geom import depth_for_radius, distances_to_segments, drop_collinear, flat_radius, simplify
 
 
 def _closed_loop(wire, deflection) -> np.ndarray:
     pts = np.array([(p.x, p.y) for p in wire.discretize(QuasiDeflection=deflection)])
     if len(pts) > 1 and np.linalg.norm(pts[-1] - pts[0]) < App.Base.Precision.confusion():
         pts = pts[:-1]
+    pts = drop_collinear(pts, App.Base.Precision.confusion())
     return np.vstack([pts, pts[:1]])
 
 
