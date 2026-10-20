@@ -24,12 +24,17 @@ def is_sketch_base(obj) -> bool:
     return _sketch_of(obj) is not None
 
 
+def sketch_label(obj) -> str:
+    """Label of the sketch behind obj (the original sketch for a Job clone)."""
+    return (_sketch_of(obj) or obj).Label
+
+
 def _wires(shape):
     return [Part.Wire(group) for group in Part.sortEdges(shape.Edges)]
 
 
 def loops_for_base(obj, subs: Sequence[str] | None) -> list[Part.Wire]:
-    label = (_sketch_of(obj) or obj).Label
+    label = sketch_label(obj)
     wires = _wires(obj.Shape)
     if not subs:
         if any(not w.isClosed() for w in wires):
@@ -52,6 +57,11 @@ def loops_for_base(obj, subs: Sequence[str] | None) -> list[Part.Wire]:
 
 
 def faces_from_loops(label: str, loops: list[Part.Wire]) -> list[Part.Face]:
+    # Bullseye needs disjoint loops; crossing ones give overlapping or zero-area faces.
+    for i, a in enumerate(loops):
+        for b in loops[i + 1:]:
+            if a.BoundBox.intersect(b.BoundBox) and a.distToShape(b)[0] < 1e-7:
+                raise SketchError(f"{label}: outlines overlap or touch")
     try:
         faces = Part.makeFace(loops, "Part::FaceMakerBullseye").Faces
     except Exception as exc:

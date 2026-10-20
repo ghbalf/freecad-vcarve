@@ -78,6 +78,13 @@ class SketchTests(unittest.TestCase):
             loops_for_base(sk, None)
         self.assertIn("Open", str(cm.exception))
 
+    def test_overlapping_loops(self):
+        sk = make_sketch(self.doc, "Ov", [[(0, 0), (20, 0), (20, 10), (0, 10)],
+                                          [(10, 5), (30, 5), (30, 15), (10, 15)]])
+        with self.assertRaises(SketchError) as cm:
+            faces_from_loops("Ov", loops_for_base(sk, None))
+        self.assertIn("Ov", str(cm.exception))
+
     def test_edge_on_open_wire(self):
         sk = make_sketch(self.doc, "Open", [RECT])
         sk.addGeometry(Part.LineSegment(App.Vector(60, 0, 0), App.Vector(70, 5, 0)))

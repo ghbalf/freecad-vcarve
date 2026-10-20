@@ -67,9 +67,17 @@ def carve_polylines(face, vbit, z_top, depth_limit, *, deflection, colinear_deg,
     for xy in medial_polylines(face, segments, colinear_deg, step):
         depth = depth_for_radius(vbit, distances_to_segments(xy, segments), depth_limit)
         paths.append(np.column_stack([xy, z_top - depth]))
+    paths = [simplify(p, tol) for p in paths]
     if boundary_pass:
-        for f in offset_faces([face], -flat_radius(vbit, depth_limit)):
-            for w in f.Wires:
-                loop = _closed_loop(w, deflection)
-                paths.append(np.column_stack([loop, np.full(len(loop), z_top - depth_limit)]))
-    return [simplify(p, tol) for p in paths]
+        paths += flat_boundary_loops(face, vbit, z_top, depth_limit, deflection=deflection, tol=tol)
+    return paths
+
+
+def flat_boundary_loops(face, vbit, z_top, depth_limit, *, deflection, tol) -> list:
+    """Closed loops where the V-bit wall meets the flat floor (face offset inward by r_flat)."""
+    out = []
+    for f in offset_faces([face], -flat_radius(vbit, depth_limit)):
+        for w in f.Wires:
+            loop = _closed_loop(w, deflection)
+            out.append(simplify(np.column_stack([loop, np.full(len(loop), z_top - depth_limit)]), tol))
+    return out
