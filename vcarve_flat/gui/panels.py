@@ -142,14 +142,16 @@ class ClearanceOpPage(_Page):
 
     def getFields(self, obj):
         super().getFields(obj)
+        # An empty or unknown combo value (e.g. while the combo is being refilled) is never written.
         name = self.form.VCarveOp.currentData()
         link = obj.Document.getObject(name) if name else None
-        if obj.VCarveOp != link:
+        if link is not None and obj.VCarveOp != link:
             obj.VCarveOp = link
         if obj.StepOver != self.form.StepOver.value():
             obj.StepOver = self.form.StepOver.value()
-        if obj.PocketPattern != self.form.PocketPattern.currentText():
-            obj.PocketPattern = self.form.PocketPattern.currentText()
+        pattern = self.form.PocketPattern.currentText()
+        if pattern in obj.getEnumerationsOfProperty("PocketPattern") and obj.PocketPattern != pattern:
+            obj.PocketPattern = pattern
 
     def setFields(self, obj):
         super().setFields(obj)

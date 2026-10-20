@@ -32,6 +32,7 @@ def edit(op):
     assert Gui.Control.activeDialog(), f"{op.Label}: no task panel"
     Gui.Control.closeDialog()
     Gui.ActiveDocument.resetEdit()
+    QtGui.QApplication.processEvents()  # let the closed panel go before the next one opens
 
 
 def main():
@@ -90,12 +91,14 @@ def main():
         for page in panel.featurePages:  # as after editing any field: OK writes every page back
             page.setDirty()
         panel.accept()
+        QtGui.QApplication.processEvents()  # let the closed panel go before the next one opens
 
     clr.ViewObject.Document.setEdit(clr.ViewObject, 0)  # no base geometry: no selection gate
     Gui.Selection.clearSelection()
     Gui.Selection.addSelection(job.Stock)
     assert Gui.Selection.getSelection() == [job.Stock], "clearance panel gates the selection"
     clr.ViewObject.Proxy.panel.reject()
+    QtGui.QApplication.processEvents()
     for link in (None, stray):  # a link the combo does not list must survive OK
         clr.VCarveOp = link
         accept_clearance()
@@ -103,6 +106,12 @@ def main():
     clr.VCarveOp = vc
     accept_clearance()
     assert clr.VCarveOp == vc
+
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(sk, "Vertex1")
+    base, warnings[:] = list(vc.Base), []
+    commands._add_selection(vc, job)
+    assert list(vc.Base) == base and len(warnings) == 1 and "vertices" in warnings[0], warnings
 
     count, objects = len(job.Operations.Group), len(doc.Objects)
     commands._add_selection = lambda op, job: 1 / 0

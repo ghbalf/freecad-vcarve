@@ -88,14 +88,18 @@ class _OpCommand(PathOpGui.CommandPathOp):
 
 def _add_selection(op, job):
     """Selected sketches go to BaseShapes, selected edges to Base, both as the Job's clones.
-    Selected objects that are not sketches of the Job are reported in one warning."""
-    shapes, skipped = list(op.BaseShapes), []
+    Selected objects that are not sketches of the Job, and sketches with only vertices selected,
+    are reported in one warning each."""
+    shapes, skipped, no_edges = list(op.BaseShapes), [], []
     for sel in Gui.Selection.getSelectionEx():
         model = job.Proxy.resourceClone(job, sel.Object)
         if model is None or not is_sketch_base(model):
             skipped.append(sel.Object.Label)
             continue
-        for sub in (s for s in sel.SubElementNames if s.startswith("Edge")):
+        edges = [s for s in sel.SubElementNames if s.startswith("Edge")]
+        if sel.SubElementNames and not edges:
+            no_edges.append(sel.Object.Label)
+        for sub in edges:
             op.Proxy.addBase(op, model, sub)
         if not sel.SubElementNames and model not in shapes:
             shapes.append(model)
@@ -103,6 +107,9 @@ def _add_selection(op, job):
     if skipped:
         _warn(translate("CAM_VCarve", "Not a sketch of the Job {}, skipped: {}").format(
             job.Label, ", ".join(skipped)))
+    if no_edges:
+        _warn(translate("CAM_VCarve", "Only vertices selected, skipped: {}. Select edges or the whole "
+                                      "sketch.").format(", ".join(no_edges)))
 
 
 class _PairCommand:
