@@ -74,6 +74,12 @@ def drop_collinear(loop: np.ndarray, eps: float) -> np.ndarray:
     return loop[keep] if keep.sum() >= 3 else loop
 
 
+def drop_floor_runs(path: np.ndarray, z_floor: float, eps: float = 1e-9) -> list:
+    """Pieces of a 3D polyline without its segments lying on the floor z_floor."""
+    on = path[:, 2] <= z_floor + eps
+    return [p for p in np.split(path, np.flatnonzero(on[:-1] & on[1:]) + 1) if len(p) > 1]
+
+
 def rest_stepover(vbit: VBit, scallop: float) -> float:
     return vbit.tip_diameter + 2 * scallop * math.tan(vbit.half_angle)
 

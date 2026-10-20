@@ -84,6 +84,13 @@ class MedialTests(unittest.TestCase):
         boxes = [(p[:, 0].min(), p[:, 1].min(), p[:, 0].max(), p[:, 1].max()) for p in loops]
         self.assertTrue(any(np.allclose(b, (2, 2, 38, 18), atol=0.01) for b in boxes), boxes)
 
+    def test_no_medial_run_on_floor(self):
+        # The end mill and the rest pocket clear the floor; a medial pass along it only marks it
+        paths = carve_polylines(RECT, VBit(10, 90, 0), 0.0, 2.0, drop_floor=True, **KW)
+        self.assertTrue(paths)
+        for p in paths:
+            self.assertFalse(np.any(np.isclose(p[:-1, 2], -2.0) & np.isclose(p[1:, 2], -2.0)), p)
+
     def test_depth_matches_distance(self):
         vbit = VBit(10, 90, 0)
         segs = boundary_segments(RECT, KW["deflection"])

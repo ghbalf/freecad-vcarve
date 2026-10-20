@@ -7,7 +7,7 @@ from Path.Op.Vcarve import (BORDERLINE, COLINEAR, EXTERIOR1, EXTERIOR2, PRIMARY,
                             _collectVoronoiWires)
 
 from .clearing import offset_faces
-from .geom import depth_for_radius, distances_to_segments, drop_collinear, flat_radius, simplify
+from .geom import depth_for_radius, distances_to_segments, drop_collinear, drop_floor_runs, flat_radius, simplify
 
 
 def _closed_loop(wire, deflection) -> np.ndarray:
@@ -59,14 +59,18 @@ def medial_polylines(face, segments, colinear_deg: float, step: float) -> list:
     return out
 
 
-def carve_polylines(face, vbit, z_top, depth_limit, *, deflection, colinear_deg, step, tol) -> list:
+def carve_polylines(face, vbit, z_top, depth_limit, *, deflection, colinear_deg, step, tol,
+                    drop_floor=False) -> list:
+    """V-bit paths along the medial axis; drop_floor leaves out their runs on the flat floor
+    (cleared by the end mill and the rest pocket)."""
     segments = boundary_segments(face, deflection)
     if not len(segments):
         return []
     paths = []
     for xy in medial_polylines(face, segments, colinear_deg, step):
         depth = depth_for_radius(vbit, distances_to_segments(xy, segments), depth_limit)
-        paths.append(np.column_stack([xy, z_top - depth]))
+        path = np.column_stack([xy, z_top - depth])
+        paths += drop_floor_runs(path, z_top - depth_limit) if drop_floor else [path]
     return [simplify(p, tol) for p in paths]
 
 

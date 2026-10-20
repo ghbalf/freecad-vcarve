@@ -112,7 +112,8 @@ def _carve(obj, cs, label, faces, rc):
     medial, loops, wide = [], [], False
     for face in faces:
         paths = carve_polylines(face, cs.vbit, cs.z_top, cs.depth, deflection=deflection,
-                                colinear_deg=obj.Colinear, step=obj.StepLength.Value, tol=tol)
+                                colinear_deg=obj.Colinear, step=obj.StepLength.Value, tol=tol,
+                                drop_floor=cs.r_flat > 0)
         medial += paths
         if cs.r_flat > 0:
             loops += flat_boundary_loops(face, cs.vbit, cs.z_top, cs.depth, deflection=deflection, tol=tol)

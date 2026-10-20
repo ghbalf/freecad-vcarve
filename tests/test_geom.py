@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from vcarve_flat.geom import (
-    VBit, depth_for_radius, distances_to_segments, drop_collinear, flat_radius, limit_depth, order_paths, rest_stepover,
+    VBit, depth_for_radius, distances_to_segments, drop_collinear, drop_floor_runs, flat_radius, limit_depth, order_paths, rest_stepover,
     simplify,
 )
 
@@ -102,3 +102,12 @@ def test_drop_collinear():
     assert drop_collinear(loop, 1e-7).tolist() == [[0, 0], [4, 0], [4, 4], [0, 4]]
     tri = np.array([(0, 0), (1, 0), (0.5, 1e-3)])  # 1e-3 off the chord: a real corner, kept
     assert len(drop_collinear(tri, 1e-7)) == 3
+
+
+def test_drop_floor_runs():
+    z = [0, -0.5, -1, -1, -1, -0.5, -1, -0.2, -1, -1]
+    path = np.column_stack([np.arange(len(z)), np.zeros(len(z)), z]).astype(float)
+    parts = drop_floor_runs(path, -1.0)
+    # the slopes keep the floor point they reach; runs along the floor and lone floor points go
+    assert [p[:, 0].tolist() for p in parts] == [[0, 1, 2], [4, 5, 6, 7, 8]]
+    assert drop_floor_runs(path[2:5], -1.0) == []
