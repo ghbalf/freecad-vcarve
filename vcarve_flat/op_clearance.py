@@ -23,6 +23,8 @@ def _is_endmill_tc(obj) -> bool:
 
 
 class ObjectVCarveClearance(PathOp.ObjectOp):
+    _only_tc = None  # class default: a restored document rebuilds the proxy without __init__
+
     def __init__(self, obj, name, parentJob=None, tc=None):
         # While set, only tc counts as supported, so creation does not ask FreeCAD to pick among
         # several end mills (a prompt in the GUI, an UnboundLocalError headless).

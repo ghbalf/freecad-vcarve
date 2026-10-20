@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+import os
+import tempfile
 import unittest
 from unittest import mock
 
@@ -94,13 +96,33 @@ class ClearanceTests(unittest.TestCase):
         clr.ToolController = other
         self.assertIn("Touched", vc.State)
 
-    def test_create_pair_logs_no_errors(self):
+    def test_unlinked_recompute_logs_no_errors(self):
         sk = make_sketch(self.doc, "S", [RECT])
-        job, _ = make_job(self.doc, [sk])
+        job, tcs = make_job(self.doc, [sk])
+        c = op_clearance.Create("C", parentJob=job, tc=tcs["5mm_Endmill"])
+        c.touch()
         Path.Log.error.reset_mock()
-        op_clearance.create_pair(job)
         self.doc.recompute()
         Path.Log.error.assert_not_called()
+
+    def test_survives_restore(self):
+        clr, vc = self.pair([RECT])
+        cname, vname = clr.Name, vc.Name
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "t.FCStd")
+            self.doc.saveAs(path)
+            App.closeDocument(self.doc.Name)
+            self.doc = App.openDocument(path)
+        c = self.doc.getObject(cname)
+        v = self.doc.getObject(vname)
+        self.assertTrue(c.Proxy.isToolSupported(c, c.ToolController.Tool))
+        self.assertFalse(c.Proxy.isToolSupported(c, v.ToolController.Tool))
+        Path.Log.error.reset_mock()
+        c.touch()
+        v.touch()
+        self.doc.recompute()
+        Path.Log.error.assert_not_called()
+        self.assertTrue(len(cut_points(c)))
 
     def test_failing_sketch_does_not_abort(self):
         a = make_sketch(self.doc, "Bad", [RECT])
