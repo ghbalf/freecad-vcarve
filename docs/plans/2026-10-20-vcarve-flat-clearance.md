@@ -13,11 +13,14 @@
   - polylines → `Path.Command`s (`toolpath.py`).
 - Two `Path.Op.Base.ObjectOp` subclasses build on these modules, plus a GUI layer hooked into the CAM workbench through a workbench manipulator.
 
-**Tech Stack:** FreeCAD 1.1.1 (bundled Python 3.11, numpy), Part, Path (Voronoi, Area), PySide; pytest on system Python for the pure core; `freecadcmd` + `unittest` for integration.
+**Tech Stack:** FreeCAD 1.0.2 / 1.1.4 / 26.3rc2 (bundled Python 3.11–3.13, numpy), Part, Path (Voronoi, Area), PySide; pytest on system Python for the pure core; `freecadcmd` + `unittest` for integration.
 
 **Spec:** `docs/specs/2026-10-19-vcarve-flat-clearance-design.md`
 
 ## Global Constraints
+
+- **Supported versions: FreeCAD 1.0.2, 1.1.4 and 26.3rc2** (bundled Python 3.11, 3.11 and 3.13). Each version is extracted under `<scratchpad>/fc-<version>/squashfs-root/AppRun`; the `<scratchpad>` path is given to each implementer. The integration suite must pass on all three. `package.xml` uses `<freecadmin>1.0.0</freecadmin>`.
+- **Toolbits differ by version.** 1.1+ uses the asset manager (`CAMTests.PathTestUtils.PathTestWithAssets`), and tools have `ShapeType` ("VBit", "Endmill"). 1.0.2 uses `Path.Tool.Bit.Factory.CreateFrom(path, name)`, and tools have no `ShapeType`, only `BitShape` (a path ending in `v-bit.fcstd` / `endmill.fcstd`). Tests use the bits `60degree_Vbit` and `5mm_Endmill`, which exist in all three versions. Tests read tool dimensions from the TC rather than hard-coding them, because the stock V-bit tip is 1.0 mm in 1.0.2 and 0.1 mm in 1.1+.
 
 - Every source file starts with `# SPDX-License-Identifier: LGPL-2.1-or-later`. `LICENSE` is the LGPL-2.1 text (copy `/usr/share/common-licenses/LGPL-2.1`).
 - **No code, structure or naming from F-Engrave.** Do not open its source. Reusing FreeCAD CAM code (LGPL) is allowed: `Path.Op.Vcarve._collectVoronoiWires` and the color constants `PRIMARY, SECONDARY, COLINEAR, EXTERIOR1, EXTERIOR2, TWIN, BORDERLINE` can be imported.
@@ -28,7 +31,7 @@
 - `FlatDepth` deeper than the cone height `(R - tip_r)/tan(half_angle)` is capped to the cone height, with a warning.
 - One failing sketch does not stop the others. It gets an error log that names the sketch.
 - Defaults: clearance `StepOver` 40 %, `PocketPattern` "Offset", `Allowance` 0, `RestScallop` 0.05 mm.
-- The one-click command uses the first VBit TC and the first Endmill TC (`tool.ShapeType == "VBit"` / `"Endmill"`). If either is missing, it refuses and names the missing tool. The clearance op is placed **before** the V-carve op.
+- The one-click command uses the first VBit TC and the first Endmill TC (`compat.tool_shape(tool) == "VBit"` / `"Endmill"`). If either is missing, it refuses and names the missing tool. The clearance op is placed **before** the V-carve op.
 - Package name `vcarve_flat`. No module may be named `Path`, `CAM` or `Vcarve`.
 - Units: FreeCAD stores mm internally. Read `Quantity.Value`.
 
@@ -45,10 +48,19 @@
 ### Task 1: Scaffold + depth math
 
 **Files:**
-- Create: `LICENSE`, `package.xml`, `README.md` (one paragraph for now), `pytest.ini`, `vcarve_flat/__init__.py`, `vcarve_flat/geom.py`
-- Test: `tests/test_geom.py`
+- Create: `LICENSE`, `package.xml`, `README.md` (one paragraph for now), `pytest.ini`, `vcarve_flat/__init__.py`, `vcarve_flat/geom.py`, `vcarve_flat/compat.py`
+- Test: `tests/test_geom.py`, `tests/test_compat.py`
 
 **Interfaces:**
+- Produces, in `vcarve_flat/compat.py` (no FreeCAD import):
+  - `tool_shape(tool) -> str`: returns `tool.ShapeType` if present and non-empty.
+    - Otherwise, map the basename of `tool.BitShape` (with any `.fcstd` removed) as `{"v-bit": "VBit", "endmill": "Endmill", "ballend": "Ballend"}`, falling back to the basename itself.
+    - Return `""` if the tool has neither attribute.
+  - Tests (`tests/test_compat.py`, using `types.SimpleNamespace` fakes):
+    - `ShapeType="VBit"` → "VBit".
+    - `BitShape="/x/Tools/Shape/v-bit.fcstd"` → "VBit".
+    - `BitShape="endmill.fcstd"` → "Endmill".
+    - An empty namespace → "".
 - Produces, in `vcarve_flat/geom.py` (numpy only, no FreeCAD):
   - `@dataclass(frozen=True) class VBit: diameter: float; angle_deg: float; tip_diameter: float`, with properties:
     - `radius`
@@ -151,8 +163,11 @@ def test_rest_stepover_sharp_tip():
     - Raises `SketchError("<label>: sketch is not parallel to the XY plane")` if any face normal deviates more than 1e-6 from ±Z.
 - Produces, in `tests/fc/helpers.py`:
   - `make_sketch(doc, name, loops: list[list[tuple]], circles: list[tuple[x,y,r]] = ()) -> SketchObject`: a polygon loop for each list of points.
-  - `make_job(doc, sketches, bits=("60degree_Vbit", "3.175mm_Endmill")) -> (job, dict[str, ToolController])`.
-    - Uses `PathTestWithAssets().setUp()` assets, `toolbit.attach_to_doc`, `Path.Tool.Controller.Create(name, tool=tb)`, and `job.Proxy.addToolController(tc)`.
+  - `make_job(doc, sketches, bits=("60degree_Vbit", "5mm_Endmill")) -> (job, dict[str, ToolController])`.
+    - Creates the tool with the first approach that works:
+      - 1.1+: `PathTestWithAssets().setUp()` assets, then `assets.get("toolbit://<bit>").attach_to_doc(doc=doc)`;
+      - 1.0.2: `Path.Tool.Bit.Factory.CreateFrom(<Mod/CAM>/Tools/Bit/<bit>.fctb, <bit>)`.
+    - Then `Path.Tool.Controller.Create(name, tool=tb)` and `job.Proxy.addToolController(tc)`.
     - Keys are the bit names.
 - Produces `tests/fc/run.py`, the integration entry point:
   - Puts the repo root and `os.path.dirname(os.path.dirname(Path.__file__))` (Mod/CAM) on `sys.path`.
@@ -160,9 +175,11 @@ def test_rest_stepover_sharp_tip():
   - `sys.exit(1)` on failure.
   - Prints `FC-TESTS-OK` on success.
 - Produces `tests/test_freecad.py`:
-  - Runs `[$FREECAD_APPRUN, "freecadcmd", tests/fc/run.py]` via `subprocess`, with a 600 s timeout.
-  - Asserts return code 0 and `FC-TESTS-OK` in stdout.
-  - `pytest.skip` when `FREECAD_APPRUN` is unset.
+  - Is parametrized over the `os.pathsep`-separated paths in `FREECAD_APPRUNS`, with the test id taken from `<version dir>`.
+  - Runs `[appimage_run, "freecadcmd", tests/fc/run.py]` via `subprocess`, with a 600 s timeout.
+  - Asserts return code 0 and `FC-TESTS-OK` in stdout, and prints the tail of the output on failure.
+  - `pytest.skip` when `FREECAD_APPRUNS` is unset.
+  - In this plan, "the integration command" means `FREECAD_APPRUNS=<sc>/fc-1.0.2/squashfs-root/AppRun:<sc>/fc-1.1.4/squashfs-root/AppRun:<sc>/fc-26.3rc2/squashfs-root/AppRun python3 -m pytest tests/test_freecad.py -v`. It passes only if all three versions pass.
 
 - [ ] **Step 1: Write the failing tests** in `tests/fc/test_sketches.py` (unittest, a new document per test). Fixture: an outer 40×20 rectangle with a circle hole r=4 at (10,10) and a separate 5×5 square at (50,0).
   - `test_whole_sketch`: 3 loops → `faces_from_loops` → 2 faces. The rectangle face has 1 inner wire, and its area ≈ 800 − π·16.
@@ -174,7 +191,7 @@ def test_rest_stepover_sharp_tip():
   - `test_not_xy` (Review Focus 2): the sketch `Placement` rotated 90° about X → `SketchError` containing "parallel".
   - `test_clone_is_sketch_base`: `make_job` with the sketch → `is_sketch_base(job.Model.Group[0])` is true. A `Part::Feature` box → false.
   - Use the Job clone in all tests, to prove that edge names map 1:1 onto the clone.
-- [ ] **Step 2: Run** `FREECAD_APPRUN=<scratchpad>/fc/squashfs-root/AppRun python3 -m pytest tests/test_freecad.py -v`. Expected: FAIL (ImportError on `vcarve_flat.sketches`).
+- [ ] **Step 2: Run** the integration command (defined under Interfaces above). Expected: FAIL (ImportError on `vcarve_flat.sketches`) on all three versions.
 - [ ] **Step 3: Implement** `sketches.py`, `helpers.py`, `run.py` and `test_freecad.py`.
 - [ ] **Step 4: Run** the same command. Expected: PASS.
 - [ ] **Step 5: Commit** `feat: sketch loop selection and face building`.
@@ -264,7 +281,7 @@ def test_rest_stepover_sharp_tip():
   - `opSetDefaultValues(obj, job)`: `OpStartDepth` = model bounding box `ZMax`.
   - `opUpdateDepths(obj)`: `OpFinalDepth = OpStartDepth - carve_setup(obj).depth` (display only).
   - `opRejectAddBase(obj, base, sub)`: `not is_sketch_base(base)`.
-  - `isToolSupported`: `tool.ShapeType == "VBit"`.
+  - `isToolSupported`: `compat.tool_shape(tool) == "VBit"`.
   - `Create(name, obj=None, parentJob=None)` follows `Path.Op.Vcarve.Create`.
   - `SetupProperties() -> list[str]`.
 
@@ -307,7 +324,7 @@ def test_rest_stepover_sharp_tip():
     - Region-set errors are skipped; the V-carve op already logs them.
   - `opSetDefaultValues` / `opUpdateDepths`: copy `OpStartDepth` from the link, and `OpFinalDepth = start - depth`.
   - `onChanged(obj, prop)`: for `ToolController`, `Allowance` or `VCarveOp`, call `obj.VCarveOp.touch()` when linked. This makes the V-carve op's rest area follow changes to the end mill.
-  - `isToolSupported`: `tool.ShapeType == "Endmill"`.
+  - `isToolSupported`: `compat.tool_shape(tool) == "Endmill"`.
   - `Create(name, obj=None, parentJob=None)`.
   - `SetupProperties()`.
   - `create_pair(job) -> tuple[clearance_op, vcarve_op]`:
@@ -316,9 +333,9 @@ def test_rest_stepover_sharp_tip():
     - Does not add bases (the GUI does that).
 
 - [ ] **Step 1: Write the failing tests:**
-  - `test_clears_floor`: 40×20 rectangle, `FlatDepth` 1, 60° V-bit, 3.175 mm end mill.
+  - `test_clears_floor`: 40×20 rectangle, `FlatDepth` 1, 60° V-bit, 5 mm end mill (radius `R` read from the TC).
     - The clearance path's `ZMin ≈ -1`.
-    - Every XY lies inside the rectangle offset inward by `r_flat + 1.5875 − 0.01`.
+    - Every XY lies inside the rectangle offset inward by `r_flat + R − 0.01`.
   - `test_no_flat_depth`: `FlatDepth` 0 → no `G1` commands, and the op state is not `Invalid`.
   - `test_too_narrow` (Review Focus 5): a 1.5 mm wide strip → empty clearance path, no exception.
   - `test_rest_shrinks_with_clearance`: a floor with a neck narrower than the end mill.
@@ -370,7 +387,21 @@ def test_rest_stepover_sharp_tip():
 - [ ] **Step 2: Run** the integration command. Expected: FAIL.
 - [ ] **Step 3: Implement** the GUI files and icons. Icons are simple 64×64 SVGs: a V groove, a flat-bottom groove, and both side by side.
 - [ ] **Step 4: Run** the integration command. Expected: PASS.
-- [ ] **Step 5: Manual check.** Symlink the repo into `~/.local/share/FreeCAD/Mod/freecad-vcarve` (FreeCAD 1.1 user Mod dir; confirm the path with `App.getUserAppDataDir()`), launch the GUI AppImage, and check:
+- [ ] **Step 4b: Offscreen GUI check.** This step does not modify the user's real FreeCAD config.
+  - Write `tests/gui/check_gui.py` and `tests/test_gui.py`. The test is parametrized over `FREECAD_APPRUNS` like `test_freecad.py`. For each AppRun it:
+    - creates a temp dir `home`, symlinks the repo to `home/Mod/freecad-vcarve`;
+    - runs `QT_QPA_PLATFORM=offscreen FREECAD_USER_HOME=<home> <AppRun> freecad tests/gui/check_gui.py` with a 300 s timeout;
+    - expects `GUI-CHECK-OK` in stdout.
+  - `check_gui.py`:
+    - activates `CAMWorkbench`;
+    - asserts that `CAM_VCarveFlat`, `CAM_VCarveClearance` and `CAM_VCarvePair` are in `FreeCADGui.listCommands()`, and that all three are in the "New Operations" toolbar (`FreeCADGui.getMainWindow().findChildren(QtGui.QToolBar)` → action `objectName`/`data` or the command's MenuText);
+    - builds a Job with a sketch, selects the sketch, and runs `FreeCADGui.runCommand("CAM_VCarvePair")`;
+    - asserts two ops, clearance first, with view providers whose `getIcon()` paths exist;
+    - closes the task dialog (`FreeCADGui.Control.closeDialog()`);
+    - prints `GUI-CHECK-OK`;
+    - calls `os._exit(0)`, or `os._exit(1)` on any exception after printing the traceback.
+  - If `FREECAD_USER_HOME` is not honored by a version (check `App.getUserAppDataDir()` inside the script), report it instead of falling back to the real home.
+- [ ] **Step 5: Manual check (by the user).** Symlink the repo into the user Mod dir (confirm the path with `App.getUserAppDataDir()`), launch each of the three GUI AppImages (`~/bin/FreeCAD_1.0.2-conda-Linux-x86_64-py311.AppImage`, `~/bin/FreeCAD_1.1.4-Linux-x86_64-py311.AppImage`, `~/bin/FreeCAD_26.3rc2-Linux-x86_64.AppImage`), and check:
   1. The three commands appear next to Vcarve in the CAM toolbar and menu.
   2. With a Job and a ShapeString-derived sketch, select the sketch and run *V-Carve pair*: two ops appear, clearance first.
   3. Edit the V-carve op, add the edge of one letter in the base page, set Flat Depth to 1 mm → recompute; the path is shown.
@@ -390,6 +421,6 @@ def test_rest_stepover_sharp_tip():
   - the known limitation about scallops;
   - the license line;
   - how to run tests (`python3 -m pytest`, with `FREECAD_APPRUN` set).
-- [ ] **Step 2: Run the full suite:** `FREECAD_APPRUN=<AppRun> python3 -m pytest -v`. Expected: all pure tests pass, `test_freecad.py` passes, and nothing is skipped.
+- [ ] **Step 2: Run the full suite:** `FREECAD_APPRUNS=<all three AppRuns> python3 -m pytest -v`. Expected: all pure tests pass, `test_freecad.py` passes, and nothing is skipped.
 - [ ] **Step 3: Check the headers:** `grep -L "SPDX-License-Identifier: LGPL-2.1-or-later" $(git ls-files '*.py')` prints nothing.
 - [ ] **Step 4: Commit** `docs: README with workflow and testing`.
