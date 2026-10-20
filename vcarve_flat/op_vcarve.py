@@ -58,6 +58,9 @@ def region_sets(obj) -> list:
     out = []
     for base, subs in entries + list(grouped.values()):
         label = sketch_label(base)
+        if not is_sketch_base(base):
+            out.append((label, SketchError(f"{label}: not a sketch, only sketches can be carved")))
+            continue
         try:
             out.append((label, faces_from_loops(label, loops_for_base(base, subs))))
         except SketchError as err:
@@ -67,32 +70,42 @@ def region_sets(obj) -> list:
     return out
 
 
-def find_clearance_op(obj):
-    """The clearance op linked to obj (duck-typed on its VCarveOp property), or None."""
+def clearance_ops(obj) -> list:
+    """The active clearance ops linked to obj (duck-typed on their VCarveOp property)."""
     job = PathUtils.findParentJob(obj)
-    return next((op for op in (job.Operations.Group if job else [])
-                 if getattr(op, "VCarveOp", None) == obj), None)
+    return [op for op in (job.Operations.Group if job else [])
+            if getattr(op, "VCarveOp", None) == obj and getattr(op, "Active", True)]
 
 
-def _rest_pocket(obj, cs, faces, cop):
+def find_clearance_op(obj):
+    """The first active clearance op linked to obj, or None."""
+    return next(iter(clearance_ops(obj)), None)
+
+
+def rest_clearance(cop) -> App.Vector:
+    """(end mill radius, allowance, 0) that the V-bit rest area leaves to cop; zero without one."""
+    if cop is None or cop.ToolController is None:
+        return App.Vector()
+    return App.Vector(cop.ToolController.Tool.Diameter.Value / 2, cop.Allowance.Value, 0)
+
+
+def _rest_pocket(obj, cs, faces, rc):
     floor = offset_faces(faces, -cs.r_flat)
-    if cop:
-        floor = subtract(floor, swept_faces(floor, cop.ToolController.Tool.Diameter.Value / 2,
-                                            cop.Allowance.Value))
+    if rc.x > 0:
+        floor = subtract(floor, swept_faces(floor, rc.x, rc.y))
     return pocket_polylines(floor, max(cs.vbit.tip_radius, MIN_REST_TOOL_RADIUS),
                             rest_stepover(cs.vbit, obj.RestScallop.Value), "Offset", 0,
                             cs.z_top - cs.depth, obj.Discretize)
 
 
-def _carve(obj, cs, label, faces, cop):
+def _carve(obj, cs, label, faces, rc):
     """(rest pocket, medial, boundary loops, wider-than-bit) polylines for one sketch's faces.
     A rest-pocket failure is logged and does not drop the medial and boundary paths."""
     deflection, tol = obj.Discretize, obj.Tolerance.Value
     medial, loops, wide = [], [], False
     for face in faces:
         paths = carve_polylines(face, cs.vbit, cs.z_top, cs.depth, deflection=deflection,
-                                colinear_deg=obj.Colinear, step=obj.StepLength.Value, tol=tol,
-                                boundary_pass=False)
+                                colinear_deg=obj.Colinear, step=obj.StepLength.Value, tol=tol)
         medial += paths
         if cs.r_flat > 0:
             loops += flat_boundary_loops(face, cs.vbit, cs.z_top, cs.depth, deflection=deflection, tol=tol)
@@ -102,14 +115,15 @@ def _carve(obj, cs, label, faces, cop):
     rest = []
     if cs.r_flat > 0:
         try:
-            rest = _rest_pocket(obj, cs, faces, cop)
+            rest = _rest_pocket(obj, cs, faces, rc)
         except Exception as exc:
             Path.Log.error(f"{label}: V-bit floor clearing failed ({exc})")
     return rest, medial, loops, wide
 
 
 def _is_vbit_tc(obj) -> bool:
-    return bool(obj.ToolController) and tool_shape(obj.ToolController.Tool) == "VBit"
+    tc = getattr(obj, "ToolController", None)  # None too for a VCarveOp link to a non-op object
+    return bool(tc) and tool_shape(tc.Tool) == "VBit"
 
 
 class ObjectVCarveFlat(PathOp.ObjectOp):
@@ -125,7 +139,11 @@ class ObjectVCarveFlat(PathOp.ObjectOp):
         self.opOnDocumentRestored(obj)
 
     def opOnDocumentRestored(self, obj):
+        if not hasattr(obj, "RestClearance"):  # documents saved before it existed
+            obj.addProperty("App::PropertyVectorDistance", "RestClearance", _GROUP,
+                            "End mill radius and allowance the rest area was computed for (internal)")
         obj.setEditorMode("BaseShapes", 2)  # hidden; edited through the base list
+        obj.setEditorMode("RestClearance", 2)
 
     def opSetDefaultValues(self, obj, job):
         if job and job.Model.Group:
@@ -150,22 +168,31 @@ class ObjectVCarveFlat(PathOp.ObjectOp):
         if not _is_vbit_tc(obj):
             Path.Log.error(f"{obj.Label}: the tool controller must use a V-bit")
             return
+        cs = carve_setup(obj)
+        # Stored before any early return: the clearance op compares it with its own tool and
+        # touches this op on a mismatch (it has no other way to know the end mill changed).
+        cops = clearance_ops(obj) if cs.r_flat > 0 else []
+        cop = cops[0] if cops else None
+        if len(cops) > 1:
+            Path.Log.warning(f"{obj.Label}: several active V-Carve Clearance ops link this op; the V-bit "
+                             f"rest area is computed for {cop.Label} only")
+        rc = rest_clearance(cop)
+        if obj.RestClearance != rc:
+            obj.RestClearance = rc
         sets = region_sets(obj)
         if not sets:
             Path.Log.warning(f"{obj.Label}: no sketches selected, nothing to cut")
             return
-        cs = carve_setup(obj)
         if cs.capped:
             Path.Log.warning(f"{obj.Label}: Flat Depth {obj.FlatDepth.Value:g} mm is deeper than the "
                              f"V-bit cone, using {cs.depth:.3f} mm")
-        cop = find_clearance_op(obj) if cs.r_flat > 0 else None
         groups = [[], [], []]  # rest pocket, medial axis, flat-boundary loops
         for label, faces in sets:
             if isinstance(faces, SketchError):
                 Path.Log.error(str(faces))
                 continue
             try:
-                *parts, wide = _carve(obj, cs, label, faces, cop)
+                *parts, wide = _carve(obj, cs, label, faces, rc)
             except Exception as exc:
                 Path.Log.error(f"{label}: carving failed ({exc})")
                 continue

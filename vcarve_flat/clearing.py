@@ -5,19 +5,18 @@ import numpy as np
 import Part
 import Path
 
-_POCKET_MODE = {"ZigZag": 1, "Offset": 2}
+_POCKET_MODE = {"ZigZag": 4, "Offset": 2}  # Path.Area: 4 = ZigZagOffset (zigzag plus a contour pass)
 
 
 def offset_faces(faces, distance: float) -> list:
-    """Offset each face; a feature that vanishes (too narrow) yields no face, not an error."""
+    """Offset each face; a feature that vanishes (too narrow) yields no face. Other offset
+    failures propagate, so the caller reports them with the sketch's name."""
     if distance == 0:
         return faces
     out = []
     for face in faces:
         try:
             out += face.makeOffset2D(distance, join=0).Faces
-        except Part.OCCError:
-            continue
         except App.Base.CADKernelError as exc:
             if "no wires" not in str(exc):
                 raise

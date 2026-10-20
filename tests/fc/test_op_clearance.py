@@ -6,6 +6,7 @@ from unittest import mock
 
 import FreeCAD as App
 import numpy as np
+import Part
 import Path
 import Path.Tool.Controller
 
@@ -61,8 +62,8 @@ class ClearanceTests(unittest.TestCase):
         clr, vc = self.pair([NECK])
         cs = op_vcarve.carve_setup(vc)
         (_, faces), = op_vcarve.region_sets(vc)
-        with_c = op_vcarve._rest_pocket(vc, cs, faces, clr)
-        without = op_vcarve._rest_pocket(vc, cs, faces, None)
+        with_c = op_vcarve._rest_pocket(vc, cs, faces, op_vcarve.rest_clearance(clr))
+        without = op_vcarve._rest_pocket(vc, cs, faces, App.Vector())
         n = lambda ps: sum(len(p) for p in ps)
         self.assertLess(n(with_c), n(without))
         pts = np.vstack(with_c)
@@ -70,6 +71,88 @@ class ClearanceTests(unittest.TestCase):
         self.assertTrue(np.any((pts[:, 0] > 22) & (pts[:, 0] < 28)))
         lobe_core = (np.abs(pts[:, 0] - 10) < 5) & (np.abs(pts[:, 1] - 10) < 5)
         self.assertFalse(lobe_core.any())
+
+    def vcarve_without_clearance(self, vc):
+        """A second V-carve op like vc that no clearance op links to."""
+        ref = op_vcarve.Create("Ref", parentJob=self.job)
+        ref.ToolController, ref.BaseShapes, ref.FlatDepth = vc.ToolController, list(vc.BaseShapes), vc.FlatDepth
+        self.doc.recompute()
+        return ref
+
+    def test_endmill_change_updates_rest_area(self):
+        clr, vc = self.pair([NECK])
+        before = vc.Path.toGCode()
+        clr.ToolController.Tool.Diameter = 10  # the first end mill: the Job's default controller
+        Path.Log.warning.reset_mock()
+        self.doc.recompute()  # FreeCAD recomputes vc again within this call, no second one needed
+        after = vc.Path.toGCode()
+        self.assertTrue(after != before, "V-carve op not recomputed")
+        self.assertNotIn("Touched", vc.State)
+        self.assertEqual(vc.RestClearance, App.Vector(5, 0, 0))
+        Path.Log.warning.assert_not_called()
+        vc.touch()
+        self.doc.recompute()
+        self.assertTrue(vc.Path.toGCode() == after, f"{len(after)} -> {len(vc.Path.toGCode())} chars")
+
+    def test_inactive_clearance_ignored(self):
+        clr, vc = self.pair([NECK])
+        clr.Active = False
+        self.assertIn("Touched", vc.State)
+        self.doc.recompute()
+        np.testing.assert_allclose(cut_points(vc), cut_points(self.vcarve_without_clearance(vc)))
+        self.assertIsNone(op_vcarve.find_clearance_op(vc))
+
+    def test_repoint_touches_old_link(self):
+        clr, vc = self.pair([NECK])
+        other = self.vcarve_without_clearance(vc)
+        clr.VCarveOp = other
+        self.assertIn("Touched", vc.State)
+        self.doc.recompute()
+        self.assertEqual(vc.RestClearance, App.Vector())
+        self.assertEqual(other.RestClearance, App.Vector(2.5, 0, 0))
+
+    def test_repoint_after_restore_touches_old_link(self):
+        clr, vc = self.pair([RECT])
+        other = self.vcarve_without_clearance(vc)
+        names = clr.Name, vc.Name, other.Name
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "t.FCStd")
+            self.doc.saveAs(path)
+            App.closeDocument(self.doc.Name)
+            self.doc = App.openDocument(path)
+        clr, vc, other = (self.doc.getObject(n) for n in names)
+        self.doc.recompute()
+        clr.VCarveOp = other
+        self.assertIn("Touched", vc.State)
+
+    def test_two_active_clearance_ops_warn(self):
+        clr, vc = self.pair([RECT])
+        second = op_clearance.Create("C2", parentJob=self.job, tc=self.etc)
+        second.VCarveOp = vc
+        self.doc.recompute()
+        msgs = [str(c.args[0]) for c in Path.Log.warning.call_args_list if c.args]
+        self.assertTrue(any(vc.Label in m and "several" in m for m in msgs), msgs)
+        self.assertNotIn("Touched", vc.State)
+
+    def test_link_to_non_op_reports_no_vbit(self):
+        clr, _ = self.pair([RECT])
+        clr.VCarveOp = make_sketch(self.doc, "Stray", [RECT])
+        clr.Proxy.opUpdateDepths(clr)  # raised AttributeError (CAM's onChanged only printed it)
+        Path.Log.error.reset_mock()
+        clr.recompute()
+        self.assertIn("no V-bit tool controller", Path.Log.error.call_args.args[0])
+
+    def test_offset_error_reaches_log(self):
+        clr, vc = self.pair([RECT])
+
+        class Failing:
+            def makeOffset2D(self, *args, **kw):
+                raise Part.OCCError("BRep_API: command not done")
+        Path.Log.error.reset_mock()
+        with mock.patch.object(op_vcarve, "region_sets", return_value=[("S", [Failing()])]):
+            clr.recompute()
+        msgs = [str(c.args[0]) for c in Path.Log.error.call_args_list if c.args]
+        self.assertTrue(any(m.startswith("S:") and "command not done" in m for m in msgs), msgs)
 
     def test_create_pair_order(self):
         clr, vc = self.pair([RECT])

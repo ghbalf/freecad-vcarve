@@ -176,6 +176,22 @@ class OpVCarveTests(unittest.TestCase):
         self.assertEqual(len(hits), 1, self.warn.call_args_list)
         self.assertIn("Clearance", str(hits[0].args[0]))
 
+    def test_non_sketch_base(self):
+        (clone,) = self.job_with(make_sketch(self.doc, "Rect", [RECT]))
+        box = self.doc.addObject("Part::Box", "Box")
+        box.Label = "MyBox"
+        op = self.make_op([clone, box], FlatDepth=1.0)
+        self.assert_inside(cut_points(op), 0, 0, 40, 20)
+        self.assertTrue(self.logged(self.err, "MyBox: not a sketch"), self.err.call_args_list)
+
+    def test_rest_clearance_hidden_and_restored(self):
+        (clone,) = self.job_with(make_sketch(self.doc, "Rect", [RECT]))
+        op = self.make_op([clone], FlatDepth=1.0)
+        self.assertIn("Hidden", op.getEditorMode("RestClearance"))
+        op.removeProperty("RestClearance")
+        op.Proxy.opOnDocumentRestored(op)  # a document saved before the property existed
+        self.assertIn("Hidden", op.getEditorMode("RestClearance"))
+
     def test_no_double_carve(self):
         (clone,) = self.job_with(make_sketch(self.doc, "Rect", [RECT]))
         whole = self.make_op([clone])

@@ -58,8 +58,7 @@ def medial_polylines(face, segments, colinear_deg: float, step: float) -> list:
     return out
 
 
-def carve_polylines(face, vbit, z_top, depth_limit, *, deflection, colinear_deg, step, tol,
-                    boundary_pass: bool) -> list:
+def carve_polylines(face, vbit, z_top, depth_limit, *, deflection, colinear_deg, step, tol) -> list:
     segments = boundary_segments(face, deflection)
     if not len(segments):
         return []
@@ -67,10 +66,7 @@ def carve_polylines(face, vbit, z_top, depth_limit, *, deflection, colinear_deg,
     for xy in medial_polylines(face, segments, colinear_deg, step):
         depth = depth_for_radius(vbit, distances_to_segments(xy, segments), depth_limit)
         paths.append(np.column_stack([xy, z_top - depth]))
-    paths = [simplify(p, tol) for p in paths]
-    if boundary_pass:
-        paths += flat_boundary_loops(face, vbit, z_top, depth_limit, deflection=deflection, tol=tol)
-    return paths
+    return [simplify(p, tol) for p in paths]
 
 
 def flat_boundary_loops(face, vbit, z_top, depth_limit, *, deflection, tol) -> list:

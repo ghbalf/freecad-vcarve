@@ -39,6 +39,11 @@ def test_distances_to_segments():
     assert distances_to_segments(pts, seg) == pytest.approx([3, 2, 5])
 
 
+def test_distances_to_segments_int_input():
+    seg = np.array([[[0, 0], [10, 0]], [[10, 0], [10, 10]]])
+    assert distances_to_segments(np.array([[5, 3], [12, 5], [-3, -4]]), seg) == pytest.approx([3, 2, 5])
+
+
 def test_rest_stepover_sharp_tip():
     assert rest_stepover(VBit(10, 90, 0), 0.05) == pytest.approx(0.1)
 

@@ -24,7 +24,9 @@ def _is_endmill_tc(obj) -> bool:
 
 
 class ObjectVCarveClearance(PathOp.ObjectOp):
-    _only_tc = None  # class default: a restored document rebuilds the proxy without __init__
+    # Class defaults: a restored document rebuilds the proxy without __init__.
+    _only_tc = None
+    _prev_link = None  # name of the V-carve op linked before the last VCarveOp change
 
     def __init__(self, obj, name, parentJob=None, tc=None):
         # While set, only tc counts as supported, so creation does not ask FreeCAD to pick among
@@ -56,11 +58,21 @@ class ObjectVCarveClearance(PathOp.ObjectOp):
         obj.OpStartDepth = link.OpStartDepth.Value
         obj.OpFinalDepth = link.OpStartDepth.Value - op_vcarve.carve_setup(link).depth
 
+    def opOnDocumentRestored(self, obj):
+        self._prev_link = obj.VCarveOp.Name if obj.VCarveOp else None
+
     def opOnChanged(self, obj, prop):
         # Fires during creation and restore, before the properties exist.
-        if prop in ("ToolController", "Allowance", "VCarveOp") and "Restore" not in obj.State \
-                and getattr(obj, "VCarveOp", None) is not None:
-            obj.VCarveOp.touch()
+        if prop not in ("ToolController", "Allowance", "VCarveOp", "Active") or "Restore" in obj.State:
+            return
+        link = getattr(obj, "VCarveOp", None)
+        if prop == "VCarveOp":  # the previous V-carve op lost its clearance op: its rest area grows
+            old = obj.Document.getObject(self._prev_link) if self._prev_link else None
+            if old is not None and old != link:
+                old.touch()
+            self._prev_link = link.Name if link else None
+        if link is not None:
+            link.touch()
 
     def isToolSupported(self, obj, tool):
         if self._only_tc is not None:
@@ -81,6 +93,11 @@ class ObjectVCarveClearance(PathOp.ObjectOp):
         if link.FlatDepth.Value == 0:
             Path.Log.info(f"{obj.Label}: the linked V-Carve operation has no Flat Depth, nothing to clear")
             return
+        if link.Active and op_vcarve.find_clearance_op(link) == obj \
+                and link.RestClearance != op_vcarve.rest_clearance(obj):
+            # The end mill changed (e.g. its diameter) after the V-carve op computed its rest area.
+            # Touched during a recompute, FreeCAD recomputes it (and this op) again in the same call.
+            link.touch()
         cs = op_vcarve.carve_setup(link)
         tc = obj.ToolController
         radius = tc.Tool.Diameter.Value / 2
@@ -104,7 +121,7 @@ class ObjectVCarveClearance(PathOp.ObjectOp):
 
 
 def SetupProperties():
-    return ["VCarveOp", "StepOver", "PocketPattern", "Allowance"]
+    return ["StepOver", "PocketPattern", "Allowance"]
 
 
 def Create(name, obj=None, parentJob=None, tc=None):

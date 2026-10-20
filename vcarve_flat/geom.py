@@ -49,6 +49,7 @@ def depth_for_radius(vbit: VBit, r: np.ndarray, depth_limit: float) -> np.ndarra
 
 def distances_to_segments(points: np.ndarray, segments: np.ndarray) -> np.ndarray:
     """Minimum distance from each of N points to any of M segments."""
+    points, segments = np.asarray(points, float), np.asarray(segments, float)
     a = segments[:, 0, :]
     ab = segments[:, 1, :] - a
     len2 = np.einsum("mi,mi->m", ab, ab)

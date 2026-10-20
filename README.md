@@ -47,6 +47,9 @@ reported too; set a flat depth to clear them.
 for you); it cuts the floor with the end mill, using `PocketPattern`, `StepOver` and `Allowance`.
 Where the end mill cannot reach part of the floor (corners, narrow areas), the V-bit clears that
 rest area. With no clearance op the V-bit clears the whole floor, which is slow, and a warning says so.
+The V-carve op follows its clearance op: after you change the end mill, `Allowance` or `Active`, or
+re-point `VCarveOp`, the next recompute updates the V-bit rest area too (in the same recompute).
+Only one active clearance op per V-carve op is supported; with more, a warning names the one used.
 
 ## Properties
 
@@ -74,8 +77,10 @@ Clearance operation (group "V-Carve"):
 ## Known limitations
 
 - V-bit rest clearing leaves scallops up to `RestScallop`.
-- The ZigZag pocket pattern can overshoot the floor edge by about 0.012 mm (a libarea artefact).
-  Offset, the default, is unaffected.
+- The ZigZag pocket pattern can overshoot the floor edge by about 0.01 mm (up to 0.02 mm with
+  small tools) at inner corners (a libarea artefact). Offset, the default, is unaffected.
+- With a wide V-bit tip (about 1 mm) or a non-zero `Allowance`, the V-bit rest pass can leave thin
+  slivers of floor uncut in sharp corners (measured 0.07 mm, more on star-like shapes).
 - Overlapping or touching outlines in one sketch (for example ShapeString letters that touch)
   are rejected with an error naming the sketch. Separate them, or put them in separate sketches.
 - A self-intersecting single loop (a figure-8) is not detected.
