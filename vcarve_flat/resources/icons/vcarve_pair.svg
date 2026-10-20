@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: LGPL-2.1-or-later -->
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <path d="M2 22 H6 L14 40 L22 22 H32 V40 H56 V22 H62 V58 H2 Z" fill="#c4a07a" stroke="#3b2f24" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M8 8 L14 20 L20 8 M38 8 V28 H50 V8" fill="none" stroke="#3465a4" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

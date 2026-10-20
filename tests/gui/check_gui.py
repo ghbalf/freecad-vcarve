@@ -1,0 +1,119 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+"""Offscreen GUI check, run as: freecad tests/gui/check_gui.py (see tests/test_gui.py).
+Prints GUI-CHECK-OK and exits 0 on success; prints the traceback and exits 1 otherwise."""
+import os
+import sys
+import tempfile
+import traceback
+
+import FreeCAD as App
+import FreeCADGui as Gui
+from PySide import QtCore, QtGui
+
+# The addon link made by tests/test_gui.py; gives the test helpers without relying on __file__.
+sys.path.insert(0, os.path.join(os.environ["FREECAD_USER_HOME"], "Mod", "freecad-vcarve", "tests", "fc"))
+NAMES = ["CAM_VCarveFlat", "CAM_VCarveClearance", "CAM_VCarvePair"]
+
+
+def toolbar_entries(title):
+    bars = [b for b in Gui.getMainWindow().findChildren(QtGui.QToolBar) if b.objectName() == title]
+    assert bars, f"no toolbar {title!r}"
+    return {str(v) for a in bars[0].actions() for v in (a.objectName(), a.data(), a.text()) if v}
+
+
+def check_icons(ops):
+    for op in ops:
+        path = op.ViewObject.Proxy.getIcon()
+        assert os.path.isfile(path), f"{op.Label}: icon {path!r} missing"
+
+
+def edit(op):
+    op.ViewObject.Document.setEdit(op.ViewObject, 0)
+    assert Gui.Control.activeDialog(), f"{op.Label}: no task panel"
+    Gui.Control.closeDialog()
+    Gui.ActiveDocument.resetEdit()
+
+
+def main():
+    home = os.path.realpath(os.environ["FREECAD_USER_HOME"])
+    data = os.path.realpath(App.getUserAppDataDir())
+    assert data.startswith(home), f"FREECAD_USER_HOME not honored: user data dir is {data}"
+
+    Gui.activateWorkbench("CAMWorkbench")
+    QtGui.QApplication.processEvents()
+    missing = [n for n in NAMES if n not in Gui.listCommands()]
+    assert not missing, f"commands not registered: {missing}"
+    entries = toolbar_entries("New Operations")
+    for name in NAMES:
+        text = Gui.Command.get(name).getInfo()["menuText"]
+        assert name in entries or text in entries, f"{name} not in toolbar: {sorted(entries)}"
+
+    import Path.Main.Gui.Job as JobGui
+    import Path.Tool.Controller as Controller
+    import PathScripts.PathUtils as PathUtils
+    from helpers import _tool, make_sketch
+
+    doc = App.newDocument("guicheck")
+    sk = make_sketch(doc, "Letters", [[(0, 0), (40, 0), (40, 20), (0, 20)]])
+    job = JobGui.Create([sk], None, False)
+    for bit in ("60degree_Vbit", "5mm_Endmill"):
+        job.Proxy.addToolController(Controller.Create(bit, tool=_tool(doc, bit)))
+    doc.recompute()
+    clone = job.Model.Group[0]
+
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(sk)
+    Gui.runCommand("CAM_VCarvePair")
+    QtGui.QApplication.processEvents()
+    ops = list(job.Operations.Group)
+    assert len(ops) == 2, f"expected 2 ops, got {[o.Label for o in ops]}"
+    clr, vc = ops
+    assert getattr(clr, "VCarveOp", None) == vc, "clearance op is not first or not linked"
+    assert list(vc.BaseShapes) == [clone], f"BaseShapes {[o.Label for o in vc.BaseShapes]}"
+    assert Gui.Control.activeDialog(), "no task panel for the V-carve op"
+    check_icons(ops)
+    Gui.Control.closeDialog()
+    Gui.ActiveDocument.resetEdit()
+    edit(clr)  # clearance page
+
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(clone, "Edge1")
+    Gui.runCommand("CAM_VCarveFlat")
+    QtGui.QApplication.processEvents()
+    single = job.Operations.Group[-1]
+    assert len(job.Operations.Group) == 3 and single.Base and single.Base[0][0] == clone, \
+        f"CAM_VCarveFlat base: {single.Base}"
+    single.ViewObject.Proxy.panel.accept()  # OK keeps the op (Cancel deletes a new one)
+
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(sk)  # the original sketch must be mapped to the Job's clone
+    Gui.runCommand("CAM_VCarveFlat")
+    QtGui.QApplication.processEvents()
+    whole = job.Operations.Group[-1]
+    assert len(job.Operations.Group) == 4 and list(whole.BaseShapes) == [clone], \
+        f"CAM_VCarveFlat BaseShapes: {[o.Name for o in whole.BaseShapes]}"
+    whole.ViewObject.Proxy.panel.accept()
+
+    path = os.path.join(tempfile.mkdtemp(), "guicheck.FCStd")
+    doc.saveAs(path)
+    App.closeDocument(doc.Name)
+    doc = App.openDocument(path)
+    ops = list(PathUtils.GetJobs()[0].Operations.Group)
+    check_icons(ops)
+    for op in ops:
+        edit(op)
+
+
+def run():
+    try:
+        main()
+        print("GUI-CHECK-OK", file=sys.__stdout__, flush=True)
+        code = 0
+    except BaseException:
+        traceback.print_exc(file=sys.__stdout__)
+        sys.__stdout__.flush()
+        code = 1
+    os._exit(code)
+
+
+QtCore.QTimer.singleShot(0, run)
