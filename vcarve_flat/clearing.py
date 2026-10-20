@@ -24,8 +24,18 @@ def offset_faces(faces, distance: float) -> list:
 
 
 def swept_faces(floor, tool_radius: float, allowance: float) -> list:
-    """Area an end mill of tool_radius can reach inside floor, keeping allowance from the walls."""
-    return offset_faces(offset_faces(floor, -(tool_radius + allowance)), tool_radius)
+    """Area an end mill of tool_radius can reach inside floor, keeping allowance from the walls.
+    Path.Area, like the pocketing: OCC's outward makeOffset2D drops the outer wire of some faces
+    with holes (font letters such as O and B) or fails on them."""
+    if not floor:
+        return []
+    area = Path.Area()
+    for face in floor:
+        area.add(face)
+    centres = area.makeOffset(offset=-(tool_radius + allowance))
+    if not centres.Faces:
+        return []
+    return Path.Area().add(centres).makeOffset(offset=tool_radius).Faces
 
 
 def subtract(a, b) -> list:

@@ -112,6 +112,13 @@ class ClearingTests(unittest.TestCase):
         self.assertTrue(rest)
         self.assertTrue(any(f.isInside(V(35, 5, 0), 1e-6, True) for f in rest))
 
+    def test_rest_area_ring(self):
+        # An "O": OCC's outward makeOffset2D dropped the outer wire of such faces (or failed), so the
+        # end mill seemed to clear almost nothing and the V-bit re-cleared the whole floor
+        floor = Part.Face(Part.Wire(Part.makeCircle(20))).cut(Part.Face(Part.Wire(Part.makeCircle(12)))).Faces
+        rest = subtract(floor, swept_faces(floor, 1.5875, 0))
+        self.assertLess(sum(f.Area for f in rest), 0.01 * floor[0].Area)
+
     def test_subtract_empty(self):
         self.assertEqual(subtract([RECT], []), [RECT])
         self.assertEqual(subtract([], [RECT]), [])
