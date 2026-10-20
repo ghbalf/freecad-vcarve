@@ -16,6 +16,7 @@ from .sketches import SketchError, faces_from_loops, is_sketch_base, loops_for_b
 from .toolpath import paths_to_commands
 
 _GROUP = "V-Carve"
+MIN_REST_TOOL_RADIUS = 0.01  # mm; Path.Area rejects radius 0 and gets noisy far below this
 _PROPS = [  # (type, name, default, tooltip)
     ("App::PropertyLength", "FlatDepth", 0.0,
      "Depth of the flat floor below Start Depth (0 = carve as deep as the V-bit cone allows)"),
@@ -48,9 +49,11 @@ def carve_setup(obj) -> CarveSetup:
 def region_sets(obj) -> list:
     """[(sketch label, faces | SketchError)] for each BaseShapes sketch and each Base sketch."""
     entries = [(b, None) for b in obj.BaseShapes]
+    whole = {b.Name for b in obj.BaseShapes}
     grouped = {}
     for base, subs in obj.Base:
-        grouped.setdefault(base.Name, (base, []))[1].extend(subs)
+        if base.Name not in whole:  # a whole sketch already covers its edge selections
+            grouped.setdefault(base.Name, (base, []))[1].extend(subs)
     out = []
     for base, subs in entries + list(grouped.values()):
         label = sketch_label(base)
@@ -58,6 +61,8 @@ def region_sets(obj) -> list:
             out.append((label, faces_from_loops(label, loops_for_base(base, subs))))
         except SketchError as err:
             out.append((label, err))
+        except Exception as err:
+            out.append((label, SketchError(f"{label}: {err}")))
     return out
 
 
@@ -68,17 +73,21 @@ def find_clearance_op(obj):
                  if getattr(op, "VCarveOp", None) == obj), None)
 
 
-def _carve(obj, cs, faces, cop):
-    """(rest pocket, medial, boundary loops, wider-than-bit) polylines for one sketch's faces."""
+def _rest_pocket(obj, cs, faces, cop):
+    floor = offset_faces(faces, -cs.r_flat)
+    if cop:
+        floor = subtract(floor, swept_faces(floor, cop.ToolController.Tool.Diameter.Value / 2,
+                                            cop.Allowance.Value))
+    return pocket_polylines(floor, max(cs.vbit.tip_radius, MIN_REST_TOOL_RADIUS),
+                            rest_stepover(cs.vbit, obj.RestScallop.Value), "Offset", 0,
+                            cs.z_top - cs.depth, obj.Discretize)
+
+
+def _carve(obj, cs, label, faces, cop):
+    """(rest pocket, medial, boundary loops, wider-than-bit) polylines for one sketch's faces.
+    A rest-pocket failure is logged and does not drop the medial and boundary paths."""
     deflection, tol = obj.Discretize, obj.Tolerance.Value
-    rest, medial, loops, wide = [], [], [], False
-    if cs.r_flat > 0:
-        floor = offset_faces(faces, -cs.r_flat)
-        if cop:
-            floor = subtract(floor, swept_faces(floor, cop.ToolController.Tool.Diameter.Value / 2,
-                                                cop.Allowance.Value))
-        rest = pocket_polylines(floor, cs.vbit.tip_radius, rest_stepover(cs.vbit, obj.RestScallop.Value),
-                                "Offset", 0, cs.z_top - cs.depth, deflection)
+    medial, loops, wide = [], [], False
     for face in faces:
         paths = carve_polylines(face, cs.vbit, cs.z_top, cs.depth, deflection=deflection,
                                 colinear_deg=obj.Colinear, step=obj.StepLength.Value, tol=tol,
@@ -89,6 +98,12 @@ def _carve(obj, cs, faces, cop):
         elif paths:
             dist = distances_to_segments(np.vstack(paths)[:, :2], boundary_segments(face, deflection))
             wide = wide or dist.max() > cs.vbit.radius
+    rest = []
+    if cs.r_flat > 0:
+        try:
+            rest = _rest_pocket(obj, cs, faces, cop)
+        except Exception as exc:
+            Path.Log.error(f"{label}: V-bit floor clearing failed ({exc})")
     return rest, medial, loops, wide
 
 
@@ -149,7 +164,7 @@ class ObjectVCarveFlat(PathOp.ObjectOp):
                 Path.Log.error(str(faces))
                 continue
             try:
-                *parts, wide = _carve(obj, cs, faces, cop)
+                *parts, wide = _carve(obj, cs, label, faces, cop)
             except Exception as exc:
                 Path.Log.error(f"{label}: carving failed ({exc})")
                 continue
@@ -157,6 +172,9 @@ class ObjectVCarveFlat(PathOp.ObjectOp):
                 group += paths
             if wide:
                 Path.Log.warning(f"{label}: areas wider than the V-bit; set Flat Depth to clear them")
+        if groups[0] and cop is None:
+            Path.Log.warning(f"{obj.Label}: no V-Carve Clearance op, so the V-bit is clearing the whole "
+                             "floor (slow); add a V-Carve Clearance op with an end mill")
         ordered, pos = [], (0.0, 0.0)
         for group in groups:
             group = order_paths(group, pos)

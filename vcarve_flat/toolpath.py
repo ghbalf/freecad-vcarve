@@ -9,6 +9,7 @@ def paths_to_commands(paths, safe_z, clearance_z, hfeed, vfeed) -> list:
         x, y, z = (float(v) for v in p[0])
         cmds += [Path.Command("G0", {"Z": clearance_z if i == 0 else safe_z}),
                  Path.Command("G0", {"X": x, "Y": y}),
+                 Path.Command("G0", {"Z": safe_z}),
                  Path.Command("G1", {"Z": z, "F": vfeed})]
         cmds += [Path.Command("G1", {"X": float(a), "Y": float(b), "Z": float(c), "F": hfeed})
                  for a, b, c in p[1:]]

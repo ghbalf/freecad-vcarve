@@ -10,6 +10,7 @@ import Path
 from helpers import make_job, make_sketch
 from vcarve_flat import op_vcarve
 from vcarve_flat.geom import VBit, flat_radius
+from vcarve_flat.toolpath import paths_to_commands
 
 RECT = [(0, 0), (40, 0), (40, 20), (0, 20)]
 RING = [(70, 10, 10), (70, 10, 4)]
@@ -135,6 +136,68 @@ class OpVCarveTests(unittest.TestCase):
         a, b = cut_points(whole), cut_points(edge)
         np.testing.assert_allclose(a.min(axis=0), b.min(axis=0), atol=0.01)
         np.testing.assert_allclose(a.max(axis=0), b.max(axis=0), atol=0.01)
+
+    def test_sharp_bit_flat(self):
+        (clone,) = self.job_with(make_sketch(self.doc, "Rect", [RECT]))
+        self.tc.Tool.TipDiameter = 0
+        self.doc.recompute()
+        op = self.make_op([clone], FlatDepth=1.0)
+        pts = cut_points(op)
+        self.assertAlmostEqual(pts[:, 2].min(), -1.0, delta=1e-6)
+        self.assertEqual(self.err.call_args_list, [])
+
+    def test_rest_pocket_failure_keeps_carve(self):
+        (clone,) = self.job_with(make_sketch(self.doc, "Rect", [RECT]))
+        with mock.patch.object(op_vcarve, "pocket_polylines", side_effect=RuntimeError("boom")):
+            op = self.make_op([clone], FlatDepth=1.0)
+        self.assertAlmostEqual(cut_points(op)[:, 2].min(), -1.0, delta=1e-6)
+        self.assertTrue(self.logged(self.err, "Rect"), self.err.call_args_list)
+
+    def test_region_sets_unexpected_error(self):
+        rect, ring = self.job_with(make_sketch(self.doc, "Rect", [RECT]),
+                                   make_sketch(self.doc, "Ring", [], circles=RING))
+        real = op_vcarve.loops_for_base
+
+        def loops(base, subs):
+            if base == ring:
+                raise RuntimeError("kaputt")
+            return real(base, subs)
+        with mock.patch.object(op_vcarve, "loops_for_base", side_effect=loops):
+            op = self.make_op([rect, ring])
+        self.assertNotIn("Invalid", op.State)
+        self.assert_inside(cut_points(op), 0, 0, 40, 20)
+        self.assertTrue(self.logged(self.err, "Ring: kaputt"), self.err.call_args_list)
+
+    def test_whole_floor_warning_once(self):
+        rect, ring = self.job_with(make_sketch(self.doc, "Rect", [RECT]),
+                                   make_sketch(self.doc, "Ring", [], circles=RING))
+        self.make_op([rect, ring], FlatDepth=1.0)
+        hits = [c for c in self.warn.call_args_list if c.args and "whole floor" in str(c.args[0])]
+        self.assertEqual(len(hits), 1, self.warn.call_args_list)
+        self.assertIn("Clearance", str(hits[0].args[0]))
+
+    def test_no_double_carve(self):
+        (clone,) = self.job_with(make_sketch(self.doc, "Rect", [RECT]))
+        whole = self.make_op([clone])
+        both = self.make_op([clone])
+        both.Proxy.addBase(both, clone, "Edge1")
+        self.doc.recompute()
+        self.assertEqual(len(op_vcarve.region_sets(both)), 1)
+        self.assertEqual(len(cut_points(both)), len(cut_points(whole)))
+
+
+class ToolpathTests(unittest.TestCase):
+    def test_sequence(self):
+        paths = [np.array([(0, 0, -1), (1, 0, -1)]), np.array([(5, 5, -2), (6, 5, -2)])]
+        cmds = paths_to_commands(paths, 3.0, 5.0, 10.0, 2.0)
+        got = [(c.Name, dict(c.Parameters)) for c in cmds]
+        self.assertEqual(got, [
+            ("G0", {"Z": 5.0}), ("G0", {"X": 0.0, "Y": 0.0}), ("G0", {"Z": 3.0}),
+            ("G1", {"Z": -1.0, "F": 2.0}), ("G1", {"X": 1.0, "Y": 0.0, "Z": -1.0, "F": 10.0}),
+            ("G0", {"Z": 3.0}), ("G0", {"X": 5.0, "Y": 5.0}), ("G0", {"Z": 3.0}),
+            ("G1", {"Z": -2.0, "F": 2.0}), ("G1", {"X": 6.0, "Y": 5.0, "Z": -2.0, "F": 10.0}),
+            ("G0", {"Z": 5.0})])
+        self.assertEqual(paths_to_commands([], 3.0, 5.0, 10.0, 2.0), [])
 
 
 if __name__ == "__main__":
