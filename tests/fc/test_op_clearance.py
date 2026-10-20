@@ -93,3 +93,32 @@ class ClearanceTests(unittest.TestCase):
         self.assertNotIn("Touched", vc.State)
         clr.ToolController = other
         self.assertIn("Touched", vc.State)
+
+    def test_create_pair_logs_no_errors(self):
+        sk = make_sketch(self.doc, "S", [RECT])
+        job, _ = make_job(self.doc, [sk])
+        Path.Log.error.reset_mock()
+        op_clearance.create_pair(job)
+        self.doc.recompute()
+        Path.Log.error.assert_not_called()
+
+    def test_failing_sketch_does_not_abort(self):
+        a = make_sketch(self.doc, "Bad", [RECT])
+        b = make_sketch(self.doc, "Good", [[(60, 0), (100, 0), (100, 20), (60, 20)]])
+        self.job, _ = make_job(self.doc, [a, b])
+        clr, vc = op_clearance.create_pair(self.job)
+        vc.BaseShapes = list(self.job.Model.Group)
+        vc.FlatDepth = 1.0
+        real = op_clearance.pocket_polylines
+
+        def flaky(faces, *args):
+            if faces[0].BoundBox.XMax < 50:
+                raise RuntimeError("boom")
+            return real(faces, *args)
+
+        with mock.patch.object(op_clearance, "pocket_polylines", flaky):
+            self.doc.recompute()
+        pts = cut_points(clr)
+        self.assertTrue(len(pts) and np.all(pts[:, 0] > 60))
+        msgs = [str(c.args[0]) for c in Path.Log.error.call_args_list if c.args]
+        self.assertTrue(any("Bad" in m and "boom" in m for m in msgs), msgs)

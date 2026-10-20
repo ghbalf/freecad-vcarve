@@ -1,11 +1,8 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 """V-Carve Clearance operation: clears the flat floor of a linked V-carve op with an end mill."""
-from unittest import mock
-
 import FreeCAD as App
 import Path
 import Path.Op.Base as PathOp
-import PathScripts.PathUtils as PathUtils
 
 from . import op_vcarve
 from .clearing import offset_faces, pocket_polylines
@@ -26,6 +23,13 @@ def _is_endmill_tc(obj) -> bool:
 
 
 class ObjectVCarveClearance(PathOp.ObjectOp):
+    def __init__(self, obj, name, parentJob=None, tc=None):
+        # While set, only tc counts as supported, so creation does not ask FreeCAD to pick among
+        # several end mills (a prompt in the GUI, an UnboundLocalError headless).
+        self._only_tc = tc
+        super().__init__(obj, name, parentJob)
+        self._only_tc = None
+
     def opFeatures(self, obj):
         return (PathOp.FeatureTool | PathOp.FeatureHeights | PathOp.FeatureDepths
                 | PathOp.FeatureNoFinalDepth | PathOp.FeatureCoolant)
@@ -49,19 +53,21 @@ class ObjectVCarveClearance(PathOp.ObjectOp):
         obj.OpStartDepth = link.OpStartDepth.Value
         obj.OpFinalDepth = link.OpStartDepth.Value - op_vcarve.carve_setup(link).depth
 
-    def onChanged(self, obj, prop):
+    def opOnChanged(self, obj, prop):
         # Fires during creation and restore, before the properties exist.
         if prop in ("ToolController", "Allowance", "VCarveOp") and "Restore" not in obj.State \
                 and getattr(obj, "VCarveOp", None) is not None:
             obj.VCarveOp.touch()
 
     def isToolSupported(self, obj, tool):
+        if self._only_tc is not None:
+            return tool is self._only_tc.Tool
         return tool_shape(tool) == "Endmill"
 
     def opExecute(self, obj):
         link = obj.VCarveOp
         if link is None:
-            Path.Log.error(f"{obj.Label}: no V-Carve operation linked")
+            Path.Log.info(f"{obj.Label}: no V-Carve operation linked yet")
             return
         if not _is_endmill_tc(obj):
             Path.Log.error(f"{obj.Label}: the tool controller must use an end mill")
@@ -77,12 +83,15 @@ class ObjectVCarveClearance(PathOp.ObjectOp):
         radius = tc.Tool.Diameter.Value / 2
         stepover = obj.StepOver / 100 * 2 * radius
         paths = []
-        for _, faces in op_vcarve.region_sets(link):
+        for label, faces in op_vcarve.region_sets(link):
             if isinstance(faces, SketchError):
                 continue  # the V-carve op logs it
-            floor = offset_faces(faces, -cs.r_flat)
-            paths += pocket_polylines(floor, radius, stepover, obj.PocketPattern, obj.Allowance.Value,
-                                      cs.z_top - cs.depth, link.Discretize)
+            try:
+                floor = offset_faces(faces, -cs.r_flat)
+                paths += pocket_polylines(floor, radius, stepover, obj.PocketPattern, obj.Allowance.Value,
+                                          cs.z_top - cs.depth, link.Discretize)
+            except Exception as exc:
+                Path.Log.error(f"{label}: end mill floor clearing failed ({exc})")
         if not paths:
             Path.Log.info(f"{obj.Label}: no floor reachable by the end mill")
             return
@@ -95,11 +104,11 @@ def SetupProperties():
     return ["VCarveOp", "StepOver", "PocketPattern", "Allowance"]
 
 
-def Create(name, obj=None, parentJob=None):
+def Create(name, obj=None, parentJob=None, tc=None):
     """Create(name) ... create and return a V-Carve Clearance operation."""
     if obj is None:
         obj = App.ActiveDocument.addObject("Path::FeaturePython", name)
-    obj.Proxy = ObjectVCarveClearance(obj, name, parentJob)
+    obj.Proxy = ObjectVCarveClearance(obj, name, parentJob, tc)
     return obj
 
 
@@ -114,11 +123,7 @@ def create_pair(job):
     """Create (clearance op, V-carve op) in job, clearance first, linked. Adds no bases."""
     vtc = _first_tc(job, "VBit", "Add a V-bit tool controller to the job")
     etc = _first_tc(job, "Endmill", "Add an end mill tool controller to the job")
-    # Creation asks FreeCAD for a default TC, which prompts (GUI) or fails (headless) when the job
-    # has several supported ones; hand it the TC chosen here instead.
-    with mock.patch.object(PathUtils, "findToolController", lambda *_a, **_k: etc):
-        clearance = Create("VCarveClearance", parentJob=job)
-    clearance.ToolController = etc
+    clearance = Create("VCarveClearance", parentJob=job, tc=etc)
     vcarve = op_vcarve.Create("VCarve", parentJob=job)
     vcarve.ToolController = vtc
     clearance.VCarveOp = vcarve
