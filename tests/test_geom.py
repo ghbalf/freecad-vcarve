@@ -64,11 +64,28 @@ def test_order_paths_reverses():
     out = order_paths([b, a])
     assert out[0] is a or np.array_equal(out[0], a)
     assert out[1][0].tolist() == [11, 0, 0]
+    assert np.array_equal(out[1], b[::-1])
 
 
 def test_order_closed_rotates():
-    a = np.array([[5, 0, 0], [0, 0, 0]], float)
+    a = np.array([[-5, 0, 0], [0, 0, 0]], float)
     sq = np.array([[10, 10, 0], [0, 10, 0], [0, 0, 0], [10, 0, 0], [10, 10, 0]], float)
-    out = order_paths([a, sq])
+    out = order_paths([sq, a], start=(-6, 0))
+    assert out[0] is a
     assert out[1][0].tolist() == [0, 0, 0]
     assert np.array_equal(out[1][0], out[1][-1]) and len(out[1]) == 5
+
+
+def test_simplify_closed_square():
+    t = np.linspace(0, 10, 11)
+    z = np.zeros(11)
+    sq = np.vstack([np.c_[t, z, z], np.c_[z + 10, t, z][1:], np.c_[10 - t, z + 10, z][1:],
+                    np.c_[z, 10 - t, z][1:]])
+    out = simplify(sq, 0.01)
+    assert len(out) == 5 and np.array_equal(out[0], out[-1])
+
+
+@pytest.mark.parametrize("n", [0, 1, 2])
+def test_simplify_short_unchanged(n):
+    pts = np.arange(n * 3, dtype=float).reshape(n, 3)
+    assert np.array_equal(simplify(pts, 0.1), pts)
