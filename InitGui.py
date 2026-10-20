@@ -29,6 +29,8 @@ class _VCarveCommand:
         return self.resources
 
     def IsActive(self):
+        import FreeCAD
+
         doc = FreeCAD.ActiveDocument
         return doc is not None and any(
             o.TypeId == "Path::FeaturePython" and o.Name.startswith("Job") for o in doc.Objects)

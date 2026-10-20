@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import FreeCAD as App
 import numpy as np
 import Path
+import Path.Base.SetupSheet as PathSetupSheet
 import Path.Op.Base as PathOp
 import PathScripts.PathUtils as PathUtils
 
@@ -196,3 +197,6 @@ def Create(name, obj=None, parentJob=None):
         obj = App.ActiveDocument.addObject("Path::FeaturePython", name)
     obj.Proxy = ObjectVCarveFlat(obj, name, parentJob)
     return obj
+
+
+PathSetupSheet.RegisterOperation("VCarveFlat", Create, SetupProperties)

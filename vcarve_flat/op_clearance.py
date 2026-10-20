@@ -2,6 +2,7 @@
 """V-Carve Clearance operation: clears the flat floor of a linked V-carve op with an end mill."""
 import FreeCAD as App
 import Path
+import Path.Base.SetupSheet as PathSetupSheet
 import Path.Op.Base as PathOp
 
 from . import op_vcarve
@@ -126,8 +127,11 @@ def create_pair(job):
     vtc = _first_tc(job, "VBit", "Add a V-bit tool controller to the job")
     etc = _first_tc(job, "Endmill", "Add an end mill tool controller to the job")
     clearance = Create("VCarveClearance", parentJob=job, tc=etc)
-    vcarve = op_vcarve.Create("VCarve", parentJob=job)
+    vcarve = op_vcarve.Create("VCarveFlat", parentJob=job)
     vcarve.ToolController = vtc
     clearance.VCarveOp = vcarve
     clearance.Proxy.opUpdateDepths(clearance)
     return clearance, vcarve
+
+
+PathSetupSheet.RegisterOperation("VCarveClearance", Create, SetupProperties)

@@ -60,11 +60,19 @@ def main():
         job.Proxy.addToolController(Controller.Create(bit, tool=_tool(doc, bit)))
     doc.recompute()
     clone = job.Model.Group[0]
+    inactive = [n for n in NAMES if not Gui.Command.get(n).isActive()]
+    assert not inactive, f"commands inactive with a Job: {inactive}"
 
+    from vcarve_flat.gui import commands
+    warnings = []
+    commands._warn = warnings.append  # record instead of a modal message box
+    stray = make_sketch(doc, "Stray", [[(50, 0), (60, 0), (60, 10), (50, 10)]])  # not in the Job
     Gui.Selection.clearSelection()
     Gui.Selection.addSelection(sk)
+    Gui.Selection.addSelection(stray)
     Gui.runCommand("CAM_VCarvePair")
     QtGui.QApplication.processEvents()
+    assert len(warnings) == 1 and "Stray" in warnings[0] and "Letters" not in warnings[0], warnings
     ops = list(job.Operations.Group)
     assert len(ops) == 2, f"expected 2 ops, got {[o.Label for o in ops]}"
     clr, vc = ops
@@ -75,6 +83,36 @@ def main():
     Gui.Control.closeDialog()
     Gui.ActiveDocument.resetEdit()
     edit(clr)  # clearance page
+
+    def accept_clearance():
+        clr.ViewObject.Document.setEdit(clr.ViewObject, 0)
+        panel = clr.ViewObject.Proxy.panel
+        for page in panel.featurePages:  # as after editing any field: OK writes every page back
+            page.setDirty()
+        panel.accept()
+
+    clr.ViewObject.Document.setEdit(clr.ViewObject, 0)  # no base geometry: no selection gate
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(job.Stock)
+    assert Gui.Selection.getSelection() == [job.Stock], "clearance panel gates the selection"
+    clr.ViewObject.Proxy.panel.reject()
+    for link in (None, stray):  # a link the combo does not list must survive OK
+        clr.VCarveOp = link
+        accept_clearance()
+        assert clr.VCarveOp == link, f"VCarveOp {link and link.Name} rewritten to {clr.VCarveOp.Name}"
+    clr.VCarveOp = vc
+    accept_clearance()
+    assert clr.VCarveOp == vc
+
+    count, objects = len(job.Operations.Group), len(doc.Objects)
+    commands._add_selection = lambda op, job: 1 / 0
+    try:
+        commands.register()["CAM_VCarvePair"].Activated()
+        raise AssertionError("pair command swallowed the error")
+    except ZeroDivisionError:
+        pass
+    assert len(job.Operations.Group) == count and len(doc.Objects) == objects, \
+        f"failed pair creation left objects: {[o.Name for o in doc.Objects]}"
 
     Gui.Selection.clearSelection()
     Gui.Selection.addSelection(clone, "Edge1")

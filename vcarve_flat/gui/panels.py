@@ -9,6 +9,7 @@ import PathScripts.PathUtils as PathUtils
 from PySide import QtGui
 
 from ..op_vcarve import ObjectVCarveFlat
+from .selection import to_clones
 
 translate = App.Qt.translate
 # 26.3+: tool controller and coolant have a page of their own; 1.1: inline tool controller editor
@@ -88,19 +89,10 @@ class BaseGeometryPage(PathVcarveGui.TaskPanelBaseGeometryPage):
 
     def addBaseGeometry(self, selection):
         added = super().addBaseGeometry(selection)
-        job = PathUtils.findParentJob(self.obj)
-
-        def clone(o):
-            return job.Proxy.resourceClone(job, o) or o
-
-        shapes = []
-        for o in map(clone, self.obj.BaseShapes):
-            if o not in shapes:
-                shapes.append(o)
+        shapes, base = to_clones(PathUtils.findParentJob(self.obj), self.obj.BaseShapes, self.obj.Base)
         if shapes != list(self.obj.BaseShapes):
             self.obj.BaseShapes = shapes
-        base = [(clone(o), subs) for o, subs in self.obj.Base]
-        if base != list(self.obj.Base):
+        if base != [(o, tuple(subs)) for o, subs in self.obj.Base]:
             self.obj.Base = base
         return added
 
@@ -164,9 +156,12 @@ class ClearanceOpPage(_Page):
         combo = self.form.VCarveOp
         combo.blockSignals(True)
         combo.clear()
-        for op in self._vcarve_ops():
-            combo.addItem(op.Label, op.Name)
-        combo.setCurrentIndex(max(combo.findData(obj.VCarveOp.Name), 0) if obj.VCarveOp else 0)
+        ops, link = self._vcarve_ops(), obj.VCarveOp
+        if link not in ops:  # keep an unlisted (or empty) link instead of rewriting it
+            ops.insert(0, link)
+        for op in ops:
+            combo.addItem(op.Label if op else "", op.Name if op else "")
+        combo.setCurrentIndex(ops.index(link))
         combo.blockSignals(False)
         self.form.StepOver.setValue(obj.StepOver)
         pattern = self.form.PocketPattern

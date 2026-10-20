@@ -37,8 +37,8 @@ class ViewProvider(PathOpGui.ViewProvider):
     def getIcon(self):
         return self.OpIcon if self.Object.Active else super().getIcon()
 
-    def getSelectionFactory(self):
-        return selection.select
+    def getSelectionFactory(self):  # only the V-carve op has base geometry to pick
+        return selection.select if self.OpPageClass == "VCarveOpPage" else selection.free
 
 
 def _warn(text):
@@ -87,17 +87,22 @@ class _OpCommand(PathOpGui.CommandPathOp):
 
 
 def _add_selection(op, job):
-    """Selected sketches go to BaseShapes, selected edges to Base, both as the Job's clones."""
-    shapes = list(op.BaseShapes)
+    """Selected sketches go to BaseShapes, selected edges to Base, both as the Job's clones.
+    Selected objects that are not sketches of the Job are reported in one warning."""
+    shapes, skipped = list(op.BaseShapes), []
     for sel in Gui.Selection.getSelectionEx():
         model = job.Proxy.resourceClone(job, sel.Object)
         if model is None or not is_sketch_base(model):
+            skipped.append(sel.Object.Label)
             continue
         for sub in (s for s in sel.SubElementNames if s.startswith("Edge")):
             op.Proxy.addBase(op, model, sub)
         if not sel.SubElementNames and model not in shapes:
             shapes.append(model)
     op.BaseShapes = shapes
+    if skipped:
+        _warn(translate("CAM_VCarve", "Not a sketch of the Job {}, skipped: {}").format(
+            job.Label, ", ".join(skipped)))
 
 
 class _PairCommand:
@@ -112,14 +117,17 @@ class _PairCommand:
         doc.openTransaction("Create V-Carve pair")
         try:
             clearance, vcarve = op_clearance.create_pair(job)
+            _add_selection(vcarve, job)
+            # Cancel must not delete the V-carve op the clearance op links to (nor re-import the selection)
+            _attach(clearance, self.clearance_res, False)
+            _attach(vcarve, self.vcarve_res, False)
         except ValueError as e:
             doc.abortTransaction()
             _warn(translate("CAM_VCarve", str(e)))
             return
-        _add_selection(vcarve, job)
-        # Cancel must not delete the V-carve op the clearance op links to (nor re-import the selection)
-        _attach(clearance, self.clearance_res, False)
-        _attach(vcarve, self.vcarve_res, False)
+        except Exception:
+            doc.abortTransaction()
+            raise
         doc.commitTransaction()
         doc.recompute()
         # Edit once the command returned: inside it, FreeCAD defers our commit and the panel would
