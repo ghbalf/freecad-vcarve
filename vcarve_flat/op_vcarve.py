@@ -18,14 +18,21 @@ from .toolpath import paths_to_commands
 
 _GROUP = "V-Carve"
 MIN_REST_TOOL_RADIUS = 0.01  # mm; Path.Area rejects radius 0 and gets noisy far below this
+
+
+def mm(value) -> App.Units.Quantity:
+    """A length default: the setup sheet's op prototype stores it as given and must get a Quantity."""
+    return App.Units.Quantity(value, App.Units.Length)
+
+
 _PROPS = [  # (type, name, default, tooltip)
-    ("App::PropertyLength", "FlatDepth", 0.0,
+    ("App::PropertyLength", "FlatDepth", mm(0),
      "Depth of the flat floor below Start Depth (0 = carve as deep as the V-bit cone allows)"),
     ("App::PropertyFloat", "Discretize", 0.01, "Deflection used to discretize curves"),
     ("App::PropertyFloat", "Colinear", 10.0, "Angle (degrees) below which medial-axis segments count as colinear"),
-    ("App::PropertyLength", "StepLength", 0.5, "Sampling distance along the medial axis"),
-    ("App::PropertyLength", "Tolerance", 0.01, "Simplification tolerance of the toolpath"),
-    ("App::PropertyLength", "RestScallop", 0.05,
+    ("App::PropertyLength", "StepLength", mm(0.5), "Sampling distance along the medial axis"),
+    ("App::PropertyLength", "Tolerance", mm(0.01), "Simplification tolerance of the toolpath"),
+    ("App::PropertyLength", "RestScallop", mm(0.05),
      "Allowed scallop height where the V-bit clears floor the end mill cannot reach"),
 ]
 

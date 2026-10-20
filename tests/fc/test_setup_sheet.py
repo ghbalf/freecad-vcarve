@@ -24,6 +24,8 @@ class SetupSheetTests(unittest.TestCase):
             # the setup sheet editor builds a prototype of each registered op
             ptt = op.prototype(name)
             self.assertIn("FlatDepth" if mod is op_vcarve else "StepOver", ptt.properties)
+            for prop in ptt.properties.values():
+                prop.displayString()  # the Job panel's Setup tab shows every default; a float Length raised
 
     def test_pair_uses_setup_sheet_defaults(self):
         doc = App.newDocument("ss")

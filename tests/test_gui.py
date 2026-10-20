@@ -19,3 +19,4 @@ def test_gui(apprun, fc_env, tmp_path):
                          timeout=300, env=fc_env, cwd=tmp_path)
     out = res.stdout + res.stderr
     assert "GUI-CHECK-OK" in res.stdout, out[-6000:]
+    assert "Job.ERROR" not in out, out[-6000:]  # the Job panel logs, not raises, e.g. a bad op default

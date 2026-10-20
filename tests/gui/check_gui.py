@@ -150,6 +150,10 @@ def main():
     for op in ops:
         edit(op)
 
+    job = PathUtils.GetJobs()[0]  # last: after its panel, 1.0.2 hangs closing the next one
+    job.ViewObject.Document.setEdit(job.ViewObject, 0)  # its Setup tab lists the registered ops' defaults
+    job.ViewObject.Proxy.taskPanel.reject()  # Cancel
+
 
 def run():
     try:

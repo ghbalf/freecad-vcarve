@@ -15,7 +15,7 @@ from .toolpath import paths_to_commands
 _GROUP = "V-Carve"
 _PROPS = [  # (type, name, default, tooltip)
     ("App::PropertyPercent", "StepOver", 40, "Stepover as a percentage of the tool diameter"),
-    ("App::PropertyLength", "Allowance", 0.0, "Distance kept from the floor boundary"),
+    ("App::PropertyLength", "Allowance", op_vcarve.mm(0), "Distance kept from the floor boundary"),
 ]
 
 
