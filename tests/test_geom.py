@@ -5,7 +5,8 @@ import numpy as np
 import pytest
 
 from vcarve_flat.geom import (
-    VBit, depth_for_radius, distances_to_segments, flat_radius, limit_depth, rest_stepover,
+    VBit, depth_for_radius, distances_to_segments, flat_radius, limit_depth, order_paths, rest_stepover,
+    simplify,
 )
 
 V60 = VBit(10.0, 60.0, 0.0)
@@ -40,3 +41,34 @@ def test_distances_to_segments():
 
 def test_rest_stepover_sharp_tip():
     assert rest_stepover(VBit(10, 90, 0), 0.05) == pytest.approx(0.1)
+
+
+def test_simplify_collinear():
+    pts = np.array([[i, 0, 0] for i in range(11)], float)
+    assert len(simplify(pts, 0.01)) == 2
+
+
+def test_simplify_keeps_corner():
+    pts = np.array([[0, 0, 0], [5, 0, 0], [10, 0, 0], [10, 5, 0], [10, 10, 0]], float)
+    assert simplify(pts, 0.01).tolist() == [[0, 0, 0], [10, 0, 0], [10, 10, 0]]
+
+
+def test_simplify_respects_z():
+    pts = np.array([[0, 0, 0], [5, 0, -1.0], [10, 0, 0]], float)
+    assert len(simplify(pts, 0.1)) == 3
+
+
+def test_order_paths_reverses():
+    a = np.array([[0, 0, 0], [10, 0, 0]], float)
+    b = np.array([[20, 0, 0], [11, 0, 0]], float)
+    out = order_paths([b, a])
+    assert out[0] is a or np.array_equal(out[0], a)
+    assert out[1][0].tolist() == [11, 0, 0]
+
+
+def test_order_closed_rotates():
+    a = np.array([[5, 0, 0], [0, 0, 0]], float)
+    sq = np.array([[10, 10, 0], [0, 10, 0], [0, 0, 0], [10, 0, 0], [10, 10, 0]], float)
+    out = order_paths([a, sq])
+    assert out[1][0].tolist() == [0, 0, 0]
+    assert np.array_equal(out[1][0], out[1][-1]) and len(out[1]) == 5

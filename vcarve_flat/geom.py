@@ -64,3 +64,58 @@ def distances_to_segments(points: np.ndarray, segments: np.ndarray) -> np.ndarra
 
 def rest_stepover(vbit: VBit, scallop: float) -> float:
     return vbit.tip_diameter + 2 * scallop * math.tan(vbit.half_angle)
+
+
+def simplify(points, tol):
+    """Douglas-Peucker on 3D distance (iterative). Keeps first and last points."""
+    pts = np.asarray(points, float)
+    n = len(pts)
+    if n < 3:
+        return pts.copy()
+    keep = np.zeros(n, bool)
+    keep[0] = keep[-1] = True
+    stack = [(0, n - 1)]
+    while stack:
+        i, j = stack.pop()
+        if j - i < 2:
+            continue
+        seg = pts[j] - pts[i]
+        rel = pts[i + 1:j] - pts[i]
+        L2 = float(seg @ seg)
+        t = np.clip(rel @ seg / L2, 0.0, 1.0) if L2 > 0 else np.zeros(len(rel))
+        d = np.linalg.norm(rel - t[:, None] * seg, axis=1)
+        k = int(np.argmax(d))
+        if d[k] > tol:
+            m = i + 1 + k
+            keep[m] = True
+            stack += [(i, m), (m, j)]
+    return pts[keep]
+
+
+def order_paths(paths, start=(0.0, 0.0)):
+    """Greedy nearest-neighbor ordering on XY; reverses open paths and rotates closed ones."""
+    remaining = list(paths)
+    pos = np.asarray(start, float)[:2]
+    out = []
+    while remaining:
+        best = None
+        for idx, p in enumerate(remaining):
+            if len(p) > 2 and np.array_equal(p[0], p[-1]):
+                d = np.linalg.norm(p[:-1, :2] - pos, axis=1)
+                k = int(np.argmin(d))
+                cand = (float(d[k]), idx, k, False)
+            else:
+                d0 = float(np.linalg.norm(p[0, :2] - pos))
+                d1 = float(np.linalg.norm(p[-1, :2] - pos))
+                cand = (d0, idx, 0, False) if d0 <= d1 else (d1, idx, 0, True)
+            if best is None or cand[0] < best[0]:
+                best = cand
+        _, idx, k, rev = best
+        p = remaining.pop(idx)
+        if k:
+            p = np.vstack([p[k:-1], p[:k], p[k:k + 1]])
+        elif rev:
+            p = p[::-1]
+        out.append(p)
+        pos = p[-1, :2]
+    return out
