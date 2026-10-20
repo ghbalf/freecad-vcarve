@@ -79,8 +79,12 @@ Clearance operation (group "V-Carve"):
 - V-bit rest clearing leaves scallops up to `RestScallop`.
 - The ZigZag pocket pattern can overshoot the floor edge by about 0.01 mm (up to 0.02 mm with
   small tools) at inner corners (a libarea artefact). Offset, the default, is unaffected.
-- With a wide V-bit tip (about 1 mm) or a non-zero `Allowance`, the V-bit rest pass can leave thin
-  slivers of floor uncut in sharp corners (measured 0.07 mm, more on star-like shapes).
+- With a wide V-bit tip (about 1 mm, e.g. the FreeCAD 1.0.x stock 60° bit), a non-zero
+  `Allowance`, or star-like shapes, the V-bit rest pass can leave thin slivers of floor uncut in
+  sharp corners (measured 0.07–0.3 mm).
+- A clearance `StepOver` near 100 % leaves uncut ridges between passes, as with CAM Pocket.
+- After deleting a clearance op, recompute its V-carve op (select it and press Recompute) so the
+  V-bit clears the whole floor again.
 - Overlapping or touching outlines in one sketch (for example ShapeString letters that touch)
   are rejected with an error naming the sketch. Separate them, or put them in separate sketches.
 - A self-intersecting single loop (a figure-8) is not detected.
