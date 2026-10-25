@@ -8,7 +8,7 @@ import Part
 
 from vcarve_flat.clearing import offset_faces, pocket_polylines, subtract, swept_faces
 from vcarve_flat.geom import VBit, depth_for_radius, distances_to_segments
-from vcarve_flat.medial import boundary_segments, carve_polylines, flat_boundary_loops
+from vcarve_flat.medial import boundary_segments, carve_polylines, flat_boundary_loops, ridge_polylines
 from vcarve_flat.sketches import faces_from_loops
 
 V = App.Vector
@@ -39,6 +39,15 @@ A_HOLE = [(67.473153534144, 49.251441585995), (53.778957105573, 49.251441585995)
           (53.993452083251, 49.872256318138), (54.20794706093, 50.493071050281),
           (54.636937016287, 51.734700514567), (55.494916927001, 54.217959443138),
           (57.21087674843, 59.184477300281), (60.642796391287, 69.117513014567)]
+
+
+def centre_z(paths, y, x):
+    """z at (x, y) interpolated along the path segment that passes through it."""
+    for p in paths:
+        for a, b in zip(p[:-1], p[1:]):
+            if abs(a[1] - y) < 1e-6 and abs(b[1] - y) < 1e-6 and min(a[0], b[0]) <= x <= max(a[0], b[0]) and a[0] != b[0]:
+                return float(np.interp(x, [a[0], b[0]], [a[2], b[2]]))
+    raise AssertionError(f"no path through x={x}, y={y}")
 
 
 class MedialTests(unittest.TestCase):
@@ -83,6 +92,24 @@ class MedialTests(unittest.TestCase):
                  and len(p) > 3]
         boxes = [(p[:, 0].min(), p[:, 1].min(), p[:, 0].max(), p[:, 1].max()) for p in loops]
         self.assertTrue(any(np.allclose(b, (2, 2, 38, 18), atol=0.01) for b in boxes), boxes)
+
+    def test_carve_min_depth(self):
+        bar = poly_face([(0, 0), (40, 0), (40, 2), (0, 2)])
+        paths = carve_polylines(bar, VBit(10, 90, 3.0), 0.0, 2.0, min_depth=-1, **KW)
+        self.assertAlmostEqual(centre_z(paths, 1.0, 20.0), 0.5, delta=1e-3)
+
+    def test_ridge_polylines(self):
+        vbit = VBit(10, 90, 1.0)
+        bar2 = poly_face([(0, 0), (40, 0), (40, 2), (0, 2)])
+        paths = ridge_polylines(bar2, vbit, 0.0, 2.0, **KW)
+        for x in (10.0, 20.0, 30.0):
+            self.assertAlmostEqual(centre_z(paths, 1.0, x), 0.5, delta=1e-3)
+        # r = 3 on the centre line gives z = 2.5 > height: the middle run at the plug top is dropped
+        bar6 = poly_face([(0, 0), (40, 0), (40, 6), (0, 6)])
+        pts = np.vstack(ridge_polylines(bar6, vbit, 0.0, 2.0, **KW) or [np.empty((0, 3))])
+        on_axis = pts[np.abs(pts[:, 1] - 3) < 1e-6]
+        self.assertFalse(np.any((on_axis[:, 0] > 3.5) & (on_axis[:, 0] < 36.5)))
+        self.assertEqual(ridge_polylines(bar2, VBit(10, 90, 0), 0.0, 2.0, **KW), [])
 
     def test_no_medial_run_on_floor(self):
         # The end mill and the rest pocket clear the floor; a medial pass along it only marks it

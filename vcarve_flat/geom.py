@@ -42,9 +42,36 @@ def flat_radius(vbit: VBit, depth: float) -> float:
     return vbit.tip_radius + depth * math.tan(vbit.half_angle)
 
 
-def depth_for_radius(vbit: VBit, r: np.ndarray, depth_limit: float) -> np.ndarray:
+def depth_for_radius(vbit: VBit, r: np.ndarray, depth_limit: float, min_depth: float = 0.0) -> np.ndarray:
     d = (np.asarray(r, float) - vbit.tip_radius) / math.tan(vbit.half_angle)
-    return np.clip(d, 0, depth_limit)
+    return np.clip(d, min_depth, depth_limit)
+
+
+def pass_depths(final: float, step: float) -> list:
+    """Step-down depths ending at final; a last step shorter than 1e-6 is merged into final."""
+    if step <= 0 or step >= final:
+        return [final]
+    n = int((final - 1e-6) // step)
+    return [step * i for i in range(1, n + 1)] + [final]
+
+
+def inlay_defaults(vbit: VBit) -> tuple:
+    """(pocket depth P, glue gap G, surface gap S) that fit the bit's cone."""
+    cone = vbit.cone_height
+    p = min(3.0, 0.6 * cone)
+    g = 0.2
+    return p, g, min(1.5, cone - (p - g))
+
+
+def plug_errors(vbit: VBit, pocket_depth: float, glue_gap: float, surface_gap: float) -> list:
+    errors = []
+    if glue_gap <= 0 or glue_gap >= pocket_depth:
+        errors.append(f"Glue Gap {glue_gap:g} mm must be above 0 and below the pocket depth {pocket_depth:g} mm.")
+    excess = pocket_depth - glue_gap + surface_gap - vbit.cone_height
+    if excess > 1e-9:
+        errors.append(f"Plug depth (pocket depth - Glue Gap + Surface Gap) exceeds the V-bit cone height "
+                      f"{vbit.cone_height:.2f} mm by {excess:.2f} mm.")
+    return errors
 
 
 def distances_to_segments(points: np.ndarray, segments: np.ndarray) -> np.ndarray:

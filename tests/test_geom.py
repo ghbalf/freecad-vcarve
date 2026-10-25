@@ -5,8 +5,8 @@ import numpy as np
 import pytest
 
 from vcarve_flat.geom import (
-    VBit, depth_for_radius, distances_to_segments, drop_collinear, drop_floor_runs, flat_radius, limit_depth, order_paths, rest_stepover,
-    simplify,
+    VBit, depth_for_radius, distances_to_segments, drop_collinear, drop_floor_runs, flat_radius, inlay_defaults, limit_depth, order_paths,
+    pass_depths, plug_errors, rest_stepover, simplify,
 )
 
 V60 = VBit(10.0, 60.0, 0.0)
@@ -31,6 +31,37 @@ def test_flat_radius():
 def test_depth_for_radius_clamps():
     r = np.array([0.0, 0.05, 1.1, 50.0])
     assert depth_for_radius(V90, r, 2.0) == pytest.approx([0, 0, 1.0, 2.0])
+
+
+def test_depth_for_radius_min_depth():
+    r = [0.0, 0.1, 2.1]
+    assert depth_for_radius(V90, r, 1.0, min_depth=-0.5) == pytest.approx([-0.1, 0, 1.0])
+    assert depth_for_radius(V90, r, 1.0) == pytest.approx([0, 0, 1.0])
+
+
+def test_pass_depths():
+    assert pass_depths(3, 0) == [3]
+    assert pass_depths(3, 5) == [3]
+    assert pass_depths(3, 1.5) == [1.5, 3]
+    assert pass_depths(4, 1.5) == pytest.approx([1.5, 3, 4])
+    assert pass_depths(3 + 1e-9, 1.5) == pytest.approx([1.5, 3])
+
+
+def test_inlay_defaults():
+    assert inlay_defaults(VBit(10, 90, 0.1)) == pytest.approx((2.97, 0.2, 1.5))
+    p, g, s = inlay_defaults(VBit(10, 30, 0))
+    assert (p, s) == pytest.approx((3, 1.5))
+    assert inlay_defaults(VBit(4, 90, 0)) == pytest.approx((1.2, 0.2, 1.0))
+
+
+def test_plug_errors():
+    vb = VBit(10, 90, 0.1)
+    p, g, s = inlay_defaults(vb)
+    assert plug_errors(vb, p, g, s) == []
+    assert any("Glue Gap" in m for m in plug_errors(vb, p, 0, s)) and len(plug_errors(vb, p, 0, s)) == 1
+    assert len(plug_errors(vb, p, p, s)) == 1 and "Glue Gap" in plug_errors(vb, p, p, s)[0]
+    errs = plug_errors(vb, p, g, vb.cone_height + 0.5 - (p - g))
+    assert len(errs) == 1 and "0.5" in errs[0]
 
 
 def test_distances_to_segments():

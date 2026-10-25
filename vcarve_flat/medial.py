@@ -60,7 +60,7 @@ def medial_polylines(face, segments, colinear_deg: float, step: float) -> list:
 
 
 def carve_polylines(face, vbit, z_top, depth_limit, *, deflection, colinear_deg, step, tol,
-                    drop_floor=False) -> list:
+                    drop_floor=False, min_depth=0.0) -> list:
     """V-bit paths along the medial axis; drop_floor leaves out their runs on the flat floor
     (cleared by the end mill and the rest pocket)."""
     segments = boundary_segments(face, deflection)
@@ -68,9 +68,25 @@ def carve_polylines(face, vbit, z_top, depth_limit, *, deflection, colinear_deg,
         return []
     paths = []
     for xy in medial_polylines(face, segments, colinear_deg, step):
-        depth = depth_for_radius(vbit, distances_to_segments(xy, segments), depth_limit)
+        depth = depth_for_radius(vbit, distances_to_segments(xy, segments), depth_limit, min_depth)
         path = np.column_stack([xy, z_top - depth])
         paths += drop_floor_runs(path, z_top - depth_limit) if drop_floor else [path]
+    return [simplify(p, tol) for p in paths]
+
+
+def ridge_polylines(face, vbit, z_base, height, *, deflection, colinear_deg, step, tol) -> list:
+    """Medial axis at z = z_base + clip((r - r_t)/t, 0, height), without its runs on the plug top
+    z_base + height. A pointed bit leaves no ridge."""
+    if vbit.tip_radius == 0:
+        return []
+    segments = boundary_segments(face, deflection)
+    if not len(segments):
+        return []
+    paths = []
+    for xy in medial_polylines(face, segments, colinear_deg, step):
+        up = depth_for_radius(vbit, distances_to_segments(xy, segments), height)
+        path = np.column_stack([xy, -(z_base + up)])
+        paths += [p * [1, 1, -1] for p in drop_floor_runs(path, -(z_base + height))]
     return [simplify(p, tol) for p in paths]
 
 
