@@ -26,6 +26,27 @@ def cut_points(op):
     return np.array(out).reshape(-1, 3)
 
 
+def g1_segments(op):
+    """(start, end) XYZ arrays of the G1 moves that change XY."""
+    pos, out = np.zeros(3), []
+    for c in op.Path.Commands:
+        new = np.array([c.Parameters.get(k, v) for k, v in zip("XYZ", pos)])
+        if c.Name in ("G1", "G01") and np.hypot(*(new - pos)[:2]) > 0:
+            out.append((pos, new))
+        pos = new
+    return np.array([a for a, _ in out]), np.array([b for _, b in out])
+
+
+def z_on_path(points, segments):
+    """For each point, the lowest Z of the path points nearest to it in XY."""
+    a, b = segments
+    ab = (b - a)[None, :, :2]
+    t = np.clip((((points[:, None, :2] - a[None, :, :2]) * ab).sum(axis=2) / (ab ** 2).sum(axis=2)), 0, 1)
+    q = a[None] + t[..., None] * (b - a)[None]
+    d2 = ((q[..., :2] - points[:, None, :2]) ** 2).sum(axis=2)
+    return np.where(d2 <= d2.min(axis=1, keepdims=True) + 1e-9, q[..., 2], np.inf).min(axis=1)
+
+
 class OpVCarveTests(unittest.TestCase):
     def setUp(self):
         self.doc = App.newDocument("op")
@@ -47,6 +68,8 @@ class OpVCarveTests(unittest.TestCase):
         op = op_vcarve.Create("VCarve", parentJob=self.job)
         op.ToolController = self.tc
         op.BaseShapes = list(bases)
+        if "StepDown" in props:
+            op.setExpression("StepDown", None)  # else the setup sheet's expression wins on recompute
         for k, v in props.items():
             setattr(op, k, v)
         self.doc.recompute()
@@ -210,6 +233,36 @@ class OpVCarveTests(unittest.TestCase):
         op.Proxy.opUpdateDepths(op)  # must not raise
         self.assertTrue(self.logged(self.err, f"pick its tool controller {self.tc.Label}"),
                         self.err.call_args_list)
+
+    def test_stepdown_passes(self):
+        (clone,) = self.job_with(make_sketch(self.doc, "Rect", [RECT]))
+        one = self.make_op([clone], FlatDepth=3.0, StepDown=0)
+        multi = self.make_op([clone], FlatDepth=3.0, StepDown=1.0)
+        pts, ref = cut_points(multi), cut_points(one)
+        zs = np.round(pts[:, 2], 6)
+        for z in (-1, -2, -3):
+            self.assertIn(z, zs)
+        self.assertAlmostEqual(pts[:, 2].min(), ref[:, 2].min(), delta=1e-6)
+        self.assert_inside(pts, *ref[:, :2].min(axis=0), *ref[:, :2].max(axis=0))
+        segments = g1_segments(one)
+        for chunk in np.array_split(pts, max(1, len(pts) // 100)):
+            self.assertTrue(np.all(chunk[:, 2] >= z_on_path(chunk, segments) - 0.01))
+
+    def test_stepdown_zero_is_one_pass(self):
+        (clone,) = self.job_with(make_sketch(self.doc, "Rect", [RECT]))
+        a = self.make_op([clone], FlatDepth=3.0, StepDown=0)
+        b = self.make_op([clone], FlatDepth=3.0, StepDown=100.0)
+        np.testing.assert_array_equal(cut_points(a), cut_points(b))
+
+    def test_restored_without_stepdown(self):
+        (clone,) = self.job_with(make_sketch(self.doc, "Rect", [RECT]))
+        ref = self.make_op([clone], FlatDepth=3.0, StepDown=0)
+        op = self.make_op([clone], FlatDepth=3.0, StepDown=1.0)
+        op.removeProperty("StepDown")
+        op.Proxy.onDocumentRestored(op)  # a v1 document
+        self.assertEqual(op.StepDown.Value, 0)
+        op.recompute()
+        np.testing.assert_array_equal(cut_points(op), cut_points(ref))
 
 
 class ToolpathTests(unittest.TestCase):

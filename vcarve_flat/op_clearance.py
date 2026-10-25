@@ -6,7 +6,7 @@ import Path.Base.SetupSheet as PathSetupSheet
 import Path.Op.Base as PathOp
 
 from . import op_vcarve
-from .clearing import offset_faces, pocket_polylines
+from .clearing import pocket_polylines
 from .compat import tool_shape
 from .geom import order_paths
 from .sketches import SketchError
@@ -37,7 +37,7 @@ class ObjectVCarveClearance(PathOp.ObjectOp):
         self._only_tc = None
 
     def opFeatures(self, obj):
-        return (PathOp.FeatureTool | PathOp.FeatureHeights | PathOp.FeatureDepths
+        return (PathOp.FeatureTool | PathOp.FeatureHeights | PathOp.FeatureDepths | PathOp.FeatureStepDown
                 | PathOp.FeatureNoFinalDepth | PathOp.FeatureCoolant)
 
     def initOperation(self, obj):
@@ -48,6 +48,7 @@ class ObjectVCarveClearance(PathOp.ObjectOp):
         for typ, name, value, tip in _PROPS:
             obj.addProperty(typ, name, _GROUP, tip)
             setattr(obj, name, value)
+        obj.setEditorMode("StepDown", 2)  # unused: the levels come from the linked op
 
     def opSetDefaultValues(self, obj, job):
         self.opUpdateDepths(obj)
@@ -56,11 +57,15 @@ class ObjectVCarveClearance(PathOp.ObjectOp):
         link = getattr(obj, "VCarveOp", None)
         if link is None or not op_vcarve._is_vbit_tc(link):
             return
+        levels = link.Proxy.levels(link)
+        if not levels:
+            return
         obj.OpStartDepth = link.OpStartDepth.Value
-        obj.OpFinalDepth = link.OpStartDepth.Value - op_vcarve.carve_setup(link).depth
+        obj.OpFinalDepth = levels[-1].z_top - levels[-1].depth
 
     def opOnDocumentRestored(self, obj):
         self._prev_link = obj.VCarveOp.Name if obj.VCarveOp else None
+        obj.setEditorMode("StepDown", 2)
 
     def opOnChanged(self, obj, prop):
         # Fires during creation and restore, before the properties exist.
@@ -93,7 +98,10 @@ class ObjectVCarveClearance(PathOp.ObjectOp):
         if not op_vcarve._is_vbit_tc(link):
             Path.Log.error(f"{obj.Label}: the linked V-Carve operation has no V-bit tool controller")
             return
-        if link.FlatDepth.Value == 0:
+        levels = link.Proxy.levels(link)
+        if not levels:
+            return  # the linked op logs why
+        if not levels[-1].flat:
             Path.Log.info(f"{obj.Label}: the linked V-Carve operation has no Flat Depth, nothing to clear")
             return
         if link.Active and op_vcarve.find_clearance_op(link) == obj \
@@ -101,24 +109,37 @@ class ObjectVCarveClearance(PathOp.ObjectOp):
             # The end mill changed (e.g. its diameter) after the V-carve op computed its rest area.
             # Touched during a recompute, FreeCAD recomputes it (and this op) again in the same call.
             link.touch()
-        cs = op_vcarve.carve_setup(link)
         tc = obj.ToolController
-        radius = tc.Tool.Diameter.Value / 2
-        stepover = obj.StepOver / 100 * 2 * radius
-        paths = []
-        for label, faces in op_vcarve.region_sets(link):
+        diameter = tc.Tool.Diameter.Value
+        error = link.Proxy.end_mill_error(link, diameter)
+        if error:
+            Path.Log.error(f"{obj.Label}: {error}")
+            return
+        radius = diameter / 2
+        stepover = obj.StepOver / 100 * diameter
+        by_level = [[] for _ in levels]
+        for label, faces in link.Proxy.regions(link):
             if isinstance(faces, SketchError):
                 continue  # the V-carve op logs it
             try:
-                floor = offset_faces(faces, -cs.r_flat)
-                paths += pocket_polylines(floor, radius, stepover, obj.PocketPattern, obj.Allowance.Value,
-                                          cs.z_top - cs.depth, link.Discretize)
+                cut = [pocket_polylines(link.Proxy.floor(link, cs, faces), radius, stepover, obj.PocketPattern,
+                                        obj.Allowance.Value, cs.z_top - cs.depth, link.Discretize)
+                       for cs in levels]
             except Exception as exc:
                 Path.Log.error(f"{label}: end mill floor clearing failed ({exc})")
+                continue
+            for paths, level in zip(by_level, cut):
+                paths += level
+        paths, pos = [], (0.0, 0.0)
+        for level in by_level:
+            level = order_paths(level, pos)
+            if level:
+                pos = level[-1][-1, :2]
+            paths += level
         if not paths:
             Path.Log.info(f"{obj.Label}: no floor reachable by the end mill")
             return
-        self.commandlist.extend(paths_to_commands(order_paths(paths, (0.0, 0.0)), obj.SafeHeight.Value,
+        self.commandlist.extend(paths_to_commands(paths, obj.SafeHeight.Value,
                                                   obj.ClearanceHeight.Value, tc.HorizFeed.Value,
                                                   tc.VertFeed.Value))
 

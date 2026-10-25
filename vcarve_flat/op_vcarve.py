@@ -11,7 +11,8 @@ import PathScripts.PathUtils as PathUtils
 
 from .clearing import offset_faces, pocket_polylines, subtract, swept_faces
 from .compat import tool_shape
-from .geom import VBit, distances_to_segments, flat_radius, limit_depth, order_paths, rest_stepover
+from .geom import (VBit, distances_to_segments, flat_radius, limit_depth, order_paths, pass_depths,
+                   rest_stepover)
 from .medial import boundary_segments, carve_polylines, flat_boundary_loops
 from .sketches import SketchError, faces_from_loops, is_sketch_base, loops_for_base, sketch_label
 from .toolpath import paths_to_commands
@@ -44,14 +45,16 @@ class CarveSetup:
     depth: float
     r_flat: float
     capped: bool
+    flat: bool
+    min_depth: float = 0.0
 
 
 def carve_setup(obj) -> CarveSetup:
     t = obj.ToolController.Tool
     vbit = VBit(t.Diameter.Value, t.CuttingEdgeAngle.Value, t.TipDiameter.Value)
-    flat = obj.FlatDepth.Value
-    depth, capped = limit_depth(vbit, flat)
-    return CarveSetup(vbit, obj.StartDepth.Value, depth, flat_radius(vbit, depth) if flat > 0 else 0.0, capped)
+    flat = obj.FlatDepth.Value > 0
+    depth, capped = limit_depth(vbit, obj.FlatDepth.Value)
+    return CarveSetup(vbit, obj.StartDepth.Value, depth, flat_radius(vbit, depth) if flat else 0.0, capped, flat)
 
 
 def region_sets(obj) -> list:
@@ -97,7 +100,7 @@ def rest_clearance(cop) -> App.Vector:
 
 
 def _rest_pocket(obj, cs, faces, rc):
-    floor = offset_faces(faces, -cs.r_flat)
+    floor = obj.Proxy.floor(obj, cs, faces)
     if rc.x > 0:
         floor = subtract(floor, swept_faces(floor, rc.x, rc.y))
     return pocket_polylines(floor, max(cs.vbit.tip_radius, MIN_REST_TOOL_RADIUS),
@@ -113,15 +116,15 @@ def _carve(obj, cs, label, faces, rc):
     for face in faces:
         paths = carve_polylines(face, cs.vbit, cs.z_top, cs.depth, deflection=deflection,
                                 colinear_deg=obj.Colinear, step=obj.StepLength.Value, tol=tol,
-                                drop_floor=cs.r_flat > 0)
+                                drop_floor=cs.flat, min_depth=cs.min_depth)
         medial += paths
-        if cs.r_flat > 0:
-            loops += flat_boundary_loops(face, cs.vbit, cs.z_top, cs.depth, deflection=deflection, tol=tol)
+        if cs.flat:
+            loops += obj.Proxy.wall_loops(obj, cs, face)
         elif paths:
             dist = distances_to_segments(np.vstack(paths)[:, :2], boundary_segments(face, deflection))
             wide = wide or dist.max() > cs.vbit.radius
     rest = []
-    if cs.r_flat > 0:
+    if cs.flat:
         try:
             rest = _rest_pocket(obj, cs, faces, rc)
         except Exception as exc:
@@ -151,8 +154,35 @@ def _is_vbit_tc(obj) -> bool:
 
 
 class ObjectVCarveFlat(PathOp.ObjectOp):
+    # The interface the clearance op and opExecute get their geometry through; the plug op overrides it.
+    def regions(self, obj) -> list:
+        return region_sets(obj)
+
+    def levels(self, obj) -> list:
+        """One CarveSetup per step-down pass, shallowest first; only the last one may be capped."""
+        cs = carve_setup(obj)
+        depths = pass_depths(cs.depth, obj.StepDown.Value)
+        return [CarveSetup(cs.vbit, cs.z_top, d, flat_radius(cs.vbit, d) if cs.flat else 0.0,
+                           cs.capped and i == len(depths) - 1, cs.flat) for i, d in enumerate(depths)]
+
+    def floor(self, obj, cs, faces) -> list:
+        """The V-bit tool-centre floor of level cs."""
+        return offset_faces(faces, -cs.r_flat)
+
+    def wall_loops(self, obj, cs, face) -> list:
+        return flat_boundary_loops(face, cs.vbit, cs.z_top, cs.depth, deflection=obj.Discretize,
+                                   tol=obj.Tolerance.Value)
+
+    def extra_paths(self, obj) -> list:
+        """V-bit paths cut after all levels."""
+        return []
+
+    def end_mill_error(self, obj, diameter):
+        """Why an end mill of this diameter cannot clear the floor, or None."""
+        return None
+
     def opFeatures(self, obj):
-        return (PathOp.FeatureTool | PathOp.FeatureHeights | PathOp.FeatureDepths
+        return (PathOp.FeatureTool | PathOp.FeatureHeights | PathOp.FeatureDepths | PathOp.FeatureStepDown
                 | PathOp.FeatureNoFinalDepth | PathOp.FeatureBaseEdges | PathOp.FeatureCoolant)
 
     def initOperation(self, obj):
@@ -179,8 +209,9 @@ class ObjectVCarveFlat(PathOp.ObjectOp):
         job = PathUtils.findParentJob(obj)
         if job and job.Model.Group:
             obj.OpStartDepth = job.Proxy.modelBoundBox(job).ZMax
-        if _is_vbit_tc(obj):
-            obj.OpFinalDepth = obj.OpStartDepth.Value - carve_setup(obj).depth  # display only
+        levels = self.levels(obj) if _is_vbit_tc(obj) else []
+        if levels:
+            obj.OpFinalDepth = levels[-1].z_top - levels[-1].depth  # display only
 
     def opOnChanged(self, obj, prop):
         if prop == "ToolController" and "Restore" not in obj.State:
@@ -196,10 +227,13 @@ class ObjectVCarveFlat(PathOp.ObjectOp):
         if not _is_vbit_tc(obj):
             Path.Log.error(f"{obj.Label}: the tool controller must use a V-bit")
             return
-        cs = carve_setup(obj)
+        levels = self.levels(obj)
+        if not levels:
+            return
+        last = levels[-1]
         # Stored before any early return: the clearance op compares it with its own tool and
         # touches this op on a mismatch (it has no other way to know the end mill changed).
-        cops = clearance_ops(obj) if cs.r_flat > 0 else []
+        cops = clearance_ops(obj) if last.flat else []
         cop = cops[0] if cops else None
         if len(cops) > 1:
             Path.Log.warning(f"{obj.Label}: several active V-Carve Clearance ops link this op; the V-bit "
@@ -207,32 +241,33 @@ class ObjectVCarveFlat(PathOp.ObjectOp):
         rc = rest_clearance(cop)
         if obj.RestClearance != rc:
             obj.RestClearance = rc
-        sets = region_sets(obj)
+        sets = self.regions(obj)
         if not sets:
             Path.Log.warning(f"{obj.Label}: no sketches selected, nothing to cut")
             return
-        if cs.capped:
+        if last.capped:
             Path.Log.warning(f"{obj.Label}: Flat Depth {obj.FlatDepth.Value:g} mm is deeper than the "
-                             f"V-bit cone, using {cs.depth:.3f} mm")
-        groups = [[], [], []]  # rest pocket, medial axis, flat-boundary loops
+                             f"V-bit cone, using {last.depth:.3f} mm")
+        groups = [[[], [], []] for _ in levels]  # per level: rest pocket, medial axis, flat-boundary loops
         for label, faces in sets:
             if isinstance(faces, SketchError):
                 Path.Log.error(str(faces))
                 continue
             try:
-                *parts, wide = _carve(obj, cs, label, faces, rc)
+                carved = [_carve(obj, cs, label, faces, rc) for cs in levels]
             except Exception as exc:
                 Path.Log.error(f"{label}: carving failed ({exc})")
                 continue
-            for group, paths in zip(groups, parts):
-                group += paths
-            if wide:
+            for level, (*parts, _) in zip(groups, carved):
+                for group, paths in zip(level, parts):
+                    group += paths
+            if any(wide for *_, wide in carved):
                 Path.Log.warning(f"{label}: areas wider than the V-bit; set Flat Depth to clear them")
-        if groups[0] and cop is None:
+        if any(level[0] for level in groups) and cop is None:
             Path.Log.warning(f"{obj.Label}: no V-Carve Clearance op, so the V-bit is clearing the whole "
                              "floor (slow); add a V-Carve Clearance op with an end mill")
         ordered, pos = [], (0.0, 0.0)
-        for group in groups:
+        for group in [g for level in groups for g in level] + [self.extra_paths(obj)]:
             group = order_paths(group, pos)
             if group:
                 pos = group[-1][-1, :2]

@@ -14,6 +14,7 @@ from helpers import _tool, make_job, make_sketch
 from test_op_vcarve import RECT, cut_points
 from vcarve_flat import op_clearance, op_vcarve
 from vcarve_flat.compat import tool_shape
+from vcarve_flat.geom import flat_radius
 
 NECK = [(0, 0), (20, 0), (20, 7), (30, 7), (30, 0), (50, 0), (50, 20), (30, 20), (30, 13),
         (20, 13), (20, 20), (0, 20)]  # two 20 mm lobes joined by a 6 mm neck
@@ -153,6 +154,29 @@ class ClearanceTests(unittest.TestCase):
             clr.recompute()
         msgs = [str(c.args[0]) for c in Path.Log.error.call_args_list if c.args]
         self.assertTrue(any(m.startswith("S:") and "command not done" in m for m in msgs), msgs)
+
+    def test_clearance_levels(self):
+        clr, vc = self.pair([NECK], flat=3.0)
+        vc.setExpression("StepDown", None)
+        vc.StepDown = 1.0
+        self.doc.recompute()
+        z = cut_points(clr)[:, 2]
+        self.assertEqual(set(np.round(z, 6)), {-1, -2, -3})
+        self.assertTrue(np.all(np.diff(z) <= 1e-9))
+
+    def test_clearance_dispatches_through_proxy(self):
+        clr, vc = self.pair([RECT])
+        cs = op_vcarve.carve_setup(vc)
+        level = op_vcarve.CarveSetup(cs.vbit, cs.z_top, 2.0, flat_radius(cs.vbit, 2.0), False, True)
+        square = Part.Face(Part.makePolygon([App.Vector(x, y, 0) for x, y in
+                                             [(100, 100), (110, 100), (110, 110), (100, 110), (100, 100)]]))
+        with mock.patch.object(vc.Proxy, "levels", return_value=[level]), \
+                mock.patch.object(vc.Proxy, "floor", return_value=[square]):
+            clr.recompute()
+        pts = cut_points(clr)
+        self.assertTrue(len(pts))
+        self.assertTrue(np.all((pts[:, :2] >= 100) & (pts[:, :2] <= 110)))
+        np.testing.assert_allclose(pts[:, 2], -2.0)
 
     def test_create_pair_order(self):
         clr, vc = self.pair([RECT])
