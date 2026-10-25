@@ -97,6 +97,8 @@ def main():
     Gui.Selection.clearSelection()
     Gui.Selection.addSelection(job.Stock)
     assert Gui.Selection.getSelection() == [job.Stock], "clearance panel gates the selection"
+    step_down = [p.form.stepDown for p in clr.ViewObject.Proxy.panel.featurePages if hasattr(p.form, "stepDown")]
+    assert step_down and all(w.isHidden() for w in step_down), "clearance panel shows Step Down"
     clr.ViewObject.Proxy.panel.reject()
     QtGui.QApplication.processEvents()
     for link in (None, stray):  # a link the combo does not list must survive OK

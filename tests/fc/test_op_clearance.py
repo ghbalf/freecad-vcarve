@@ -178,6 +178,14 @@ class ClearanceTests(unittest.TestCase):
         self.assertTrue(np.all((pts[:, :2] >= 100) & (pts[:, :2] <= 110)))
         np.testing.assert_allclose(pts[:, 2], -2.0)
 
+    def test_end_mill_error_stops_clearance(self):
+        clr, vc = self.pair([RECT])
+        Path.Log.error.reset_mock()
+        with mock.patch.object(vc.Proxy, "end_mill_error", return_value="x"):
+            clr.recompute()
+        self.assertEqual(len(cut_points(clr)), 0)
+        Path.Log.error.assert_any_call(f"{clr.Label}: x")
+
     def test_create_pair_order(self):
         clr, vc = self.pair([RECT])
         ops = self.job.Operations.Group

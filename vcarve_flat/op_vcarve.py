@@ -132,6 +132,17 @@ def _carve(obj, cs, label, faces, rc):
     return rest, medial, loops, wide
 
 
+def _carve_levels(obj, levels, label, faces, rc) -> list:
+    """_carve at each level; without a flat floor, stops after the first level that clamps nothing
+    (the deeper ones would repeat it)."""
+    out = []
+    for cs in levels:
+        out.append(_carve(obj, cs, label, faces, rc))
+        if not cs.flat and not any(p[:, 2].min() <= cs.z_top - cs.depth + 1e-6 for p in out[-1][1]):
+            break
+    return out
+
+
 def is_tool_controller(tc) -> bool:
     # The property editor lets ToolController link any object, e.g. the tool bit itself.
     return hasattr(tc, "Tool") and hasattr(tc, "ToolNumber")
@@ -254,7 +265,7 @@ class ObjectVCarveFlat(PathOp.ObjectOp):
                 Path.Log.error(str(faces))
                 continue
             try:
-                carved = [_carve(obj, cs, label, faces, rc) for cs in levels]
+                carved = _carve_levels(obj, levels, label, faces, rc)
             except Exception as exc:
                 Path.Log.error(f"{label}: carving failed ({exc})")
                 continue

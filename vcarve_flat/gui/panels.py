@@ -15,6 +15,7 @@ translate = App.Qt.translate
 # 26.3+: tool controller and coolant have a page of their own; 1.1: inline tool controller editor
 _TC_PAGE = hasattr(PathOpGui, "TaskPanelToolControllerPage")
 _TC_EDITOR = hasattr(PathOpGui.TaskPanelPage, "updateToolControllerEditorVisibility")
+_DEPTHS_PAGE = hasattr(PathOpGui, "TaskPanelDepthsPage")  # 26.3+: the depths are on the heights page
 
 
 def _row(grid, label, widget):
@@ -127,7 +128,21 @@ class VCarveOpPage(_Page):
         return BaseGeometryPage(obj, features)
 
 
+class _NoStepDownPage(PathOpGui.TaskPanelDepthsPage if _DEPTHS_PAGE else PathOpGui.TaskPanelHeightsPage):
+    """The depths page without Step Down: the clearance op steps down with its linked op."""
+
+    def haveStepDown(self):
+        return False
+
+
 class ClearanceOpPage(_Page):
+    if _DEPTHS_PAGE:
+        def taskPanelDepthsPage(self, obj, features):
+            return _NoStepDownPage(obj, features)
+    else:
+        def taskPanelHeightsPage(self, obj, features):
+            return _NoStepDownPage(obj, features)
+
     def addFields(self, form, grid):
         form.VCarveOp = _row(grid, translate("CAM_VCarve", "V-Carve Operation"), QtGui.QComboBox())
         form.StepOver = _row(grid, translate("CAM_VCarve", "Step Over"), QtGui.QSpinBox())

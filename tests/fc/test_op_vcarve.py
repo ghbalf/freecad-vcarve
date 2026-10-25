@@ -254,6 +254,21 @@ class OpVCarveTests(unittest.TestCase):
         b = self.make_op([clone], FlatDepth=3.0, StepDown=100.0)
         np.testing.assert_array_equal(cut_points(a), cut_points(b))
 
+    def test_stepdown_no_flat_stops_when_unclamped(self):
+        # A slot carved 1.5 deep in full: levels 1 and 2 cut, level 2 clamps nothing, and the levels
+        # down to the cone height (8.66) would repeat it.
+        self.job_with(make_sketch(self.doc, "Rect", [RECT]))
+        w = 2 * flat_radius(self.vbit, 1.5)  # from the bit: its tip differs between FreeCAD versions
+        slot = make_sketch(self.doc, "Slot", [[(0, 0), (30, 0), (30, w), (0, w)]])
+        one = self.make_op([slot], StepDown=0)
+        multi = self.make_op([slot], StepDown=1.0)
+        plunges = lambda op: sum(1 for c in op.Path.Commands
+                                 if c.Name in ("G1", "G01") and set(c.Parameters) <= {"Z", "F"})
+        self.assertEqual(plunges(multi), 2 * plunges(one))
+        self.assertIn(-1, np.round(cut_points(multi)[:, 2], 6))
+        self.assertAlmostEqual(cut_points(multi)[:, 2].min(), cut_points(one)[:, 2].min(), delta=1e-6)
+        self.assertAlmostEqual(cut_points(one)[:, 2].min(), -1.5, delta=0.01)
+
     def test_restored_without_stepdown(self):
         (clone,) = self.job_with(make_sketch(self.doc, "Rect", [RECT]))
         ref = self.make_op([clone], FlatDepth=3.0, StepDown=0)
