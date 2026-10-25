@@ -61,3 +61,47 @@ def pocket_polylines(faces, tool_radius, stepover, pattern, extra_offset, z, def
         if len(pts) > 1:
             out.append(pts)
     return out
+
+
+def area_offset(faces, distance: float) -> list:
+    """Offset faces by distance (positive outward) with Path.Area, which copes with holes in both
+    directions; a result that vanishes gives []."""
+    if not faces:
+        return []
+    area = Path.Area()
+    for face in faces:
+        area.add(face)
+    return area.makeOffset(offset=distance).Faces
+
+
+def union(faces) -> list:
+    if not faces:
+        return []
+    return faces[0].fuse(faces[1:]).removeSplitter().Faces
+
+
+def intersect(a, b) -> list:
+    if not a or not b:
+        return []
+    return Part.makeCompound(a).common(Part.makeCompound(b)).Faces
+
+
+def mirror_faces(faces, axis: str, center) -> list:
+    """Mirror about the plane through center whose normal is X (left-right) or Y (front-back)."""
+    normal = App.Vector(1, 0, 0) if axis == "X" else App.Vector(0, 1, 0)
+    out = []
+    for face in faces:
+        mirrored = face.mirror(center, normal)
+        if mirrored.Area < 0 or mirrored.normalAt(0, 0).z < 0:
+            mirrored.reverse()
+        out.append(mirrored)
+    return out
+
+
+def inside_loops(loops, faces) -> list:
+    out = []
+    for loop in loops:
+        x, y = float(loop[0][0]), float(loop[0][1])
+        if any(f.isInside(App.Vector(x, y, f.BoundBox.ZMin), 1e-6, True) for f in faces):
+            out.append(loop)
+    return out
