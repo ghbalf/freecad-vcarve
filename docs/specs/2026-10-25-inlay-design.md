@@ -37,13 +37,17 @@ yet, so nothing in the design may rely on it.
 2. Both Jobs use **the same sketch** and **the same V-bit**. If the design
    changes, both follow it on recompute.
 3. **Beginner settings**, asked for when the command runs: V-bit, end mill,
-   pocket depth, glue gap. Every other value gets a sensible default.
+   pocket depth, glue gap, and how the plug wood is cleared (a ring around
+   the plug, or the whole plug board). Every other value gets a sensible
+   default.
 4. **Advanced settings** are ordinary op properties: plug start depth (shown,
-   derived), surface gap (the plug's flat depth), plug boundary or margin,
-   mirror axis, and all v1 fields.
+   derived), surface gap (the plug's flat depth), plug margin, mirror axis,
+   step-down, and all v1 fields.
 5. The tool **prevents the common inlay mistakes** it can see (see
    *Checks*), with clear messages that name the sketch or op.
-6. Unit-tested geometry, including a test that **the parts fit** when seated
+6. **Multiple passes (user decision).** All four ops (pocket and plug, V-bit
+   and end mill) cut in depth passes, not in one pass. See *Step-down*.
+7. Unit-tested geometry, including a test that **the parts fit** when seated
    (see *Testing*).
 
 ## Non-goals (v2)
@@ -149,7 +153,7 @@ P is the pocket depth, G the glue gap, S the surface gap.
   | `GlueGap` | 0.2 mm | Gap between plug top and pocket floor when seated |
   | `SurfaceGap` | 1.5 mm | Gap between plug board and board surface when seated (the plug's flat depth below the start depth) |
   | `PlugStartDepth` | read-only | P − G + r_t/t, below the plug board's top |
-  | `PlugBoundary` | see open question 2 | `Margin`: a ring around the plug; `Stock`: the whole stock of the plug Job |
+  | `PlugBoundary` | chosen in the dialog | `Margin`: a ring around the plug; `Stock`: the whole stock of the plug Job. **A choice for the user (user decision)**; the dialog preselects Margin (my call) |
   | `PlugMargin` | 10 mm | Margin mode: width of the flat ring cleared around the plug's footprint at the floor (the design offset outward by S·t) |
 
   In Margin mode (my call) the outer edge of the ring is a **straight
@@ -177,7 +181,9 @@ P is the pocket depth, G the glue gap, S the surface gap.
    one end-mill tool controller (as for v1's Pair). That Job becomes the
    Pocket Job.
 2. A small dialog asks for the beginner settings: V-bit and end mill (from
-   that Job's tool controllers), pocket depth, glue gap. It opens with
+   that Job's tool controllers), pocket depth, glue gap, and the plug
+   boundary (Margin: "saw the plug free inside a ring"; Stock: "clear the
+   whole plug board, takes longer"). It opens with
    defaults that fit the chosen V-bit (below), and an "Advanced: edit the op
    properties afterwards" hint.
 3. The command creates, in the Pocket Job, the v1 pair with Flat Depth P. It
@@ -236,16 +242,32 @@ As for v1: FreeCAD 1.0.2, 1.1.4 and 26.3rc2, the `PathOp.ObjectOp` hooks,
 sketches only, an addon layout with no patching of CAM files, LGPL-2.1+ SPDX
 headers, and the full suite run via `FREECAD_APPRUNS` before every commit.
 
-## Open questions for the user (to settle before planning)
+### Step-down (user decision: multiple passes)
 
-1. **Step-down.** v1 cuts in one pass. The plug is cut P − G + S deep (about
-   4.3 mm with the defaults), with the V-bit about 8.5 mm wide at the top and
-   the end mill at full depth. v1 has no multi-pass code, so step-down would
-   be a work package of its own, covering the V-bit carve and the clearance
-   op. Is it in v2, or is one pass OK for a first version?
-2. **Plug boundary default:** Margin (a ring is cleared, and the plug is sawn
-   free inside it before gluing) or Stock (the whole plug board is cleared,
-   so there is nothing to saw free, but it takes longer)?
+- The four ops get FreeCAD's standard `StepDown` (`FeatureStepDown`), with
+  the setup sheet's default. `StepDown = 0` means one pass, which is what v1
+  documents restored from before this change get, so their paths don't
+  change.
+- **Principle:** pass k at depth `d_k = min(k·StepDown, final depth)` cuts
+  exactly what the final cut removes above `d_k`. Every pass is a subset of
+  the final cut, and the last pass gives the same result as one pass.
+- **Pocket side:** pass k is v1 with flat depth `d_k`. The V-bit cuts the
+  medial axis clamped at `d_k`, the boundary loop at `r_flat(d_k)`, and the
+  rest pocket of that level. The end mill clears that level's floor, the
+  region offset inward by `r_flat(d_k)`, not only the final floor. That is
+  why the V-bit's rest area per level stays small.
+- **Plug side:** levels are counted from the plug wood's real top, down to
+  `P − G + S` (plus the tip compensation). Levels above `Z_v` have a
+  "negative" depth relative to `Z_v`. The cross-section there is the
+  complement grown outward by the remaining slope. This doesn't fit v1's
+  `FlatDepth ≥ 0` directly; the builder has to work out the mapping, keeping
+  the principle above.
+- The end-mill passes run before the V-bit passes, as in v1. Whether passes
+  run level by level across the two tools is not needed; each op does all of
+  its own levels.
+- Tests: for each op, the multi-pass result's deepest cut equals the
+  one-pass result, and no pass cuts outside the final cut. The fit test also
+  runs with step-down on.
 
 ## Left to the builder
 
