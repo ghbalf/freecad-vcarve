@@ -227,3 +227,10 @@ class ClearanceTests(unittest.TestCase):
         self.assertTrue(len(pts) and np.all(pts[:, 0] > 60))
         msgs = [str(c.args[0]) for c in Path.Log.error.call_args_list if c.args]
         self.assertTrue(any("Bad" in m and "boom" in m for m in msgs), msgs)
+
+    def test_tool_bit_linked_as_tool_controller(self):
+        clr, _ = self.pair([RECT])
+        clr.ToolController = self.etc.Tool
+        self.assertFalse(op_clearance._is_endmill_tc(clr))
+        msgs = [str(c.args[0]) for c in Path.Log.error.call_args_list if c.args]
+        self.assertTrue(any(f"pick its tool controller {self.etc.Label}" in m for m in msgs), msgs)

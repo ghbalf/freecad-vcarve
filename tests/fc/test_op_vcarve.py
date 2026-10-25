@@ -201,6 +201,16 @@ class OpVCarveTests(unittest.TestCase):
         self.assertEqual(len(op_vcarve.region_sets(both)), 1)
         self.assertEqual(len(cut_points(both)), len(cut_points(whole)))
 
+    def test_tool_bit_linked_as_tool_controller(self):
+        # The property editor offers every object, so the bit itself can be picked instead of its TC.
+        (clone,) = self.job_with(make_sketch(self.doc, "Rect", [RECT]))
+        op = self.make_op([clone])
+        op.ToolController = self.tc.Tool
+        self.assertFalse(op_vcarve._is_vbit_tc(op))
+        op.Proxy.opUpdateDepths(op)  # must not raise
+        self.assertTrue(self.logged(self.err, f"pick its tool controller {self.tc.Label}"),
+                        self.err.call_args_list)
+
 
 class ToolpathTests(unittest.TestCase):
     def test_sequence(self):
