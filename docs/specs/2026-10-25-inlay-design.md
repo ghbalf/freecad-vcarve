@@ -121,15 +121,37 @@ P is the pocket depth, G the glue gap, S the surface gap.
   narrower than 2·P·t have a V bottom in the pocket. The plug ridge's apex
   lands exactly on it when the walls close, whatever G is. G only protects
   the wide, flat-floor areas.
-- **Tip compensation (my call, on by default).** A flat tip makes narrow
-  pocket grooves r_t/t shallower than a sharp V. The plug is rigid, so if one
-  ridge stopped early, the whole plug would stop there and leave a gap of
-  r_t on every wall. That is 0.05 mm for a 0.1 mm tip, and 0.5 mm for a 1 mm
-  tip. The plug op therefore shrinks the letters by r_t: it offsets the
-  complement outward by r_t before carving. The plug then seats r_t/t deeper,
-  the narrow ridges reach the groove floor exactly when the walls close, and
-  the start depth becomes `P − G + r_t/t` so the floor gap stays G. The fit
-  test covers this.
+- **The flat tip (corrected after review; ridge pass = user decision).** A
+  uniform offset of a V-carved surface by r_t is the same as shifting it by
+  r_t/t in depth, so no offset or start-depth change can fix tip effects. What
+  a tip of radius r_t does:
+  - A narrow pocket groove gets a flat bottom r_t/t above the ideal V, while
+    the plug's ridge for that stroke has a sharp apex. The apex lands on the
+    flat bottom before the walls close and lifts the whole plug by r_t/t,
+    leaving a wall gap of r_t everywhere.
+  - At sharp letter corners the two parts differ by about 0.4·r_t (90°
+    corner): local mismatches, not a lift.
+
+  The fix is an optional **ridge pass** on the plug (`RidgePass`, on by
+  default; it produces no path for a sharp bit). The V-bit follows the medial
+  axis of the mirrored letters at plug depth `start − (r − r_t)/t` below the
+  plug top (r = medial radius), only where that depth is positive. This cuts
+  each ridge flat where it is narrower than the tip, so it matches the pocket
+  groove. It runs once, after the plug's last level. It cuts away up to about
+  1.6·r_t at sharp outer corners. Those small gaps are accepted and
+  documented.
+- **The tool above `Z_v`.** v1 clamps the medial depth at 0 (the carve
+  surface). On the plug the carve surface is below the stock top, so the
+  plug's carve lets the depth go negative, down to the plug top
+  (`−start`). Otherwise the cone would gouge the letters by up to r_t
+  wherever the complement is narrower than the tip.
+- **Rounded tips.** FreeCAD's V-bit only has a flat tip. For a rounded tip,
+  the user enters as Tip Diameter the width where the rounding meets the
+  cone. The real tip lies inside that flat-tip model's envelope, so every
+  error is a gap, never a collision. Zeroing Z on the bottom of the rounding
+  makes the floor gap larger by ρ·(1 − sin θ), never smaller. The README says
+  this and recommends pointed V-bits for inlays.
+- **Plug start depth** is `start = P − G` (there is no tip term).
 
 ### Ops and properties
 
@@ -152,15 +174,16 @@ P is the pocket depth, G the glue gap, S the surface gap.
   | `PocketOp` | set by command | The pocket's V-Carve Flat op |
   | `GlueGap` | 0.2 mm | Gap between plug top and pocket floor when seated |
   | `SurfaceGap` | 1.5 mm | Gap between plug board and board surface when seated (the plug's flat depth below the start depth) |
-  | `PlugStartDepth` | read-only | P − G + r_t/t, below the plug board's top |
+  | `PlugStartDepth` | read-only | P − G, below the plug board's top |
+  | `RidgePass` | on | Flatten the plug's narrow ridges for a tipped V-bit (see *The flat tip*) |
   | `PlugBoundary` | chosen in the dialog | `Margin`: a ring around the plug; `Stock`: the whole stock of the plug Job. **A choice for the user (user decision)**; the dialog preselects Margin (my call) |
+  | `MirrorAxis` | X | X: flip left–right; Y: flip front–back. Mirrored about the design's bounding-box center |
   | `PlugMargin` | 10 mm | Margin mode: width of the flat ring cleared around the plug's footprint at the floor (the design offset outward by S·t) |
 
   In Margin mode (my call) the outer edge of the ring is a **straight
   end-mill wall, not a V-wall**: the V-bit carves only the letter walls, and
   the end mill clears the ring. A margin narrower than the end mill's
   diameter is an error. The ring is the room for sawing the plug free.
-  | `MirrorAxis` | X | X: flip left–right; Y: flip front–back. Mirrored about the design's bounding-box center |
 
   v1's carving fields (Discretize, Colinear, StepLength, Tolerance,
   RestScallop) are kept as properties of the plug op too.
@@ -193,6 +216,7 @@ P is the pocket depth, G the glue gap, S the surface gap.
 4. The plug Job's stock defaults to FreeCAD's model-based stock. The user sets
    the plug wood's real thickness; the README says it must be at least
    P − G + S plus a safe base.
+5. The dialog also has a **Ridge pass** checkbox (on), see *The flat tip*.
 
 **Defaults that fit the bit** (my call): `P = min(3 mm, 0.6 · cone height)`,
 `G = 0.2 mm` (the top of Vectric's 0.02–0.2 mm range, the most forgiving),
@@ -214,8 +238,8 @@ The checks are errors (no path) unless marked as warnings.
 - **Pocket depth capped** by the cone: v1's existing warning.
 - **Warning:** the plug Job's stock is thinner than `P − G + S`, or (in Stock
   mode) does not cover the mirrored design.
-- `G > 0` stays the rule with tip compensation; the flat tip is handled by
-  the compensation, not by G.
+- The linked pocket op has a Flat Depth (> 0); without one, P is undefined.
+- `G > 0` stays the rule. The flat tip is handled by the ridge pass, not by G.
 
 ### Testing
 
@@ -245,7 +269,9 @@ headers, and the full suite run via `FREECAD_APPRUNS` before every commit.
 ### Step-down (user decision: multiple passes)
 
 - The four ops get FreeCAD's standard `StepDown` (`FeatureStepDown`), with
-  the setup sheet's default. `StepDown = 0` means one pass, which is what v1
+  the setup sheet's default, which is the tool diameter (one pass in
+  practice). **The Inlay command sets `StepDown = 1.5 mm` on its four ops
+  (user decision).** `StepDown = 0` means one pass, which is what v1
   documents restored from before this change get, so their paths don't
   change.
 - **Principle:** pass k at depth `d_k = min(k·StepDown, final depth)` cuts
@@ -257,11 +283,15 @@ headers, and the full suite run via `FREECAD_APPRUNS` before every commit.
   region offset inward by `r_flat(d_k)`, not only the final floor. That is
   why the V-bit's rest area per level stays small.
 - **Plug side:** levels are counted from the plug wood's real top, down to
-  `P − G + S` (plus the tip compensation). Levels above `Z_v` have a
+  `P − G + S`. Levels above `Z_v` have a
   "negative" depth relative to `Z_v`. The cross-section there is the
   complement grown outward by the remaining slope. This doesn't fit v1's
   `FlatDepth ≥ 0` directly; the builder has to work out the mapping, keeping
-  the principle above.
+  the principle above. (Resolved in the plan: level k has depth
+  `d_k = s_k − (P − G)` relative to `Z_v`, negative above it. The medial
+  carve is clamped at `d_k`, and the floor is the complement offset inward by
+  `r_t + d_k·t` (outward when that is negative), clipped to the plug
+  boundary. That is exactly the level's cross-section.)
 - The end-mill passes run before the V-bit passes, as in v1. Whether passes
   run level by level across the two tools is not needed; each op does all of
   its own levels.
