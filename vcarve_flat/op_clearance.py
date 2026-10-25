@@ -20,7 +20,8 @@ _PROPS = [  # (type, name, default, tooltip)
 
 
 def _is_endmill_tc(obj) -> bool:
-    return bool(obj.ToolController) and tool_shape(obj.ToolController.Tool) == "Endmill"
+    tc = obj.ToolController
+    return op_vcarve.is_tool_controller(tc) and tool_shape(tc.Tool) == "Endmill"
 
 
 class ObjectVCarveClearance(PathOp.ObjectOp):
@@ -65,6 +66,8 @@ class ObjectVCarveClearance(PathOp.ObjectOp):
         # Fires during creation and restore, before the properties exist.
         if prop not in ("ToolController", "Allowance", "VCarveOp", "Active") or "Restore" in obj.State:
             return
+        if prop == "ToolController":
+            op_vcarve.check_tool_controller(obj)
         link = getattr(obj, "VCarveOp", None)
         if prop == "VCarveOp":  # the previous V-carve op lost its clearance op: its rest area grows
             old = obj.Document.getObject(self._prev_link) if self._prev_link else None

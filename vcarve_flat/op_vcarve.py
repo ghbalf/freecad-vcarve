@@ -129,9 +129,25 @@ def _carve(obj, cs, label, faces, rc):
     return rest, medial, loops, wide
 
 
+def is_tool_controller(tc) -> bool:
+    # The property editor lets ToolController link any object, e.g. the tool bit itself.
+    return hasattr(tc, "Tool") and hasattr(tc, "ToolNumber")
+
+
+def check_tool_controller(obj):
+    """Log an error, naming the right TC when there is one, if ToolController is not a tool controller."""
+    tc = obj.ToolController
+    if tc is None or is_tool_controller(tc):
+        return
+    job = PathUtils.findParentJob(obj)
+    owner = next((t for t in (job.Tools.Group if job else []) if getattr(t, "Tool", None) == tc), None)
+    hint = f"pick its tool controller {owner.Label}" if owner else "pick a tool controller"
+    Path.Log.error(f"{obj.Label}: {tc.Label} is not a tool controller, {hint}")
+
+
 def _is_vbit_tc(obj) -> bool:
     tc = getattr(obj, "ToolController", None)  # None too for a VCarveOp link to a non-op object
-    return bool(tc) and tool_shape(tc.Tool) == "VBit"
+    return is_tool_controller(tc) and tool_shape(tc.Tool) == "VBit"
 
 
 class ObjectVCarveFlat(PathOp.ObjectOp):
@@ -165,6 +181,10 @@ class ObjectVCarveFlat(PathOp.ObjectOp):
             obj.OpStartDepth = job.Proxy.modelBoundBox(job).ZMax
         if _is_vbit_tc(obj):
             obj.OpFinalDepth = obj.OpStartDepth.Value - carve_setup(obj).depth  # display only
+
+    def opOnChanged(self, obj, prop):
+        if prop == "ToolController" and "Restore" not in obj.State:
+            check_tool_controller(obj)
 
     def opRejectAddBase(self, obj, base, sub):
         return not is_sketch_base(base)
