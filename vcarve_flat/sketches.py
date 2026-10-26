@@ -11,7 +11,7 @@ class SketchError(Exception):
     """Message always starts with the sketch label."""
 
 
-def _sketch_of(obj):
+def sketch_of(obj):
     if obj.TypeId == _SKETCH:
         return obj
     objs = getattr(obj, "Objects", None)
@@ -21,12 +21,12 @@ def _sketch_of(obj):
 
 
 def is_sketch_base(obj) -> bool:
-    return _sketch_of(obj) is not None
+    return sketch_of(obj) is not None
 
 
 def sketch_label(obj) -> str:
     """Label of the sketch behind obj (the original sketch for a Job clone)."""
-    return (_sketch_of(obj) or obj).Label
+    return (sketch_of(obj) or obj).Label
 
 
 def _wires(shape):

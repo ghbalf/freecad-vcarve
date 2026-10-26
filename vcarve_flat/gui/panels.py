@@ -15,6 +15,7 @@ translate = App.Qt.translate
 # 26.3+: tool controller and coolant have a page of their own; 1.1: inline tool controller editor
 _TC_PAGE = hasattr(PathOpGui, "TaskPanelToolControllerPage")
 _TC_EDITOR = hasattr(PathOpGui.TaskPanelPage, "updateToolControllerEditorVisibility")
+_DEPTHS_PAGE = hasattr(PathOpGui, "TaskPanelDepthsPage")  # 26.3+: the depths are on the heights page
 
 
 def _row(grid, label, widget):
@@ -127,7 +128,21 @@ class VCarveOpPage(_Page):
         return BaseGeometryPage(obj, features)
 
 
+class _NoStepDownPage(PathOpGui.TaskPanelDepthsPage if _DEPTHS_PAGE else PathOpGui.TaskPanelHeightsPage):
+    """The depths page without Step Down: the clearance op steps down with its linked op."""
+
+    def haveStepDown(self):
+        return False
+
+
 class ClearanceOpPage(_Page):
+    if _DEPTHS_PAGE:
+        def taskPanelDepthsPage(self, obj, features):
+            return _NoStepDownPage(obj, features)
+    else:
+        def taskPanelHeightsPage(self, obj, features):
+            return _NoStepDownPage(obj, features)
+
     def addFields(self, form, grid):
         form.VCarveOp = _row(grid, translate("CAM_VCarve", "V-Carve Operation"), QtGui.QComboBox())
         form.StepOver = _row(grid, translate("CAM_VCarve", "Step Over"), QtGui.QSpinBox())
@@ -177,3 +192,43 @@ class ClearanceOpPage(_Page):
         return super().getSignalsForUpdate(obj) + [
             self.form.VCarveOp.currentIndexChanged, self.form.StepOver.editingFinished,
             self.form.PocketPattern.currentIndexChanged]
+
+
+class PlugOpPage(_Page):
+    """The plug op's own properties; PocketOp is set by the Inlay command and left alone here."""
+    _ENUMS = ("PlugBoundary", "MirrorAxis")
+
+    def addFields(self, form, grid):
+        self.quantity(form, grid, "GlueGap", translate("CAM_VCarve", "Glue Gap"))
+        self.quantity(form, grid, "SurfaceGap", translate("CAM_VCarve", "Surface Gap"))
+        self.quantity(form, grid, "PlugMargin", translate("CAM_VCarve", "Plug Margin"))
+        form.PlugBoundary = _row(grid, translate("CAM_VCarve", "Plug Boundary"), QtGui.QComboBox())
+        form.MirrorAxis = _row(grid, translate("CAM_VCarve", "Mirror Axis"), QtGui.QComboBox())
+        form.RidgePass = _row(grid, translate("CAM_VCarve", "Ridge Pass"), QtGui.QCheckBox())
+        self.quantity(form, grid, "RestScallop", translate("CAM_VCarve", "Rest Scallop"))
+        self.quantity(form, grid, "StepLength", translate("CAM_VCarve", "Step Length"))
+        self.quantity(form, grid, "Tolerance", translate("CAM_VCarve", "Tolerance"))
+
+    def getFields(self, obj):
+        super().getFields(obj)
+        for prop in self._ENUMS:
+            value = getattr(self.form, prop).currentText()
+            if value in obj.getEnumerationsOfProperty(prop) and getattr(obj, prop) != value:
+                setattr(obj, prop, value)
+        if obj.RidgePass != self.form.RidgePass.isChecked():
+            obj.RidgePass = self.form.RidgePass.isChecked()
+
+    def setFields(self, obj):
+        super().setFields(obj)
+        for prop in self._ENUMS:
+            combo = getattr(self.form, prop)
+            combo.blockSignals(True)
+            combo.clear()
+            combo.addItems(obj.getEnumerationsOfProperty(prop))
+            combo.setCurrentText(getattr(obj, prop))
+            combo.blockSignals(False)
+        self.form.RidgePass.setChecked(obj.RidgePass)
+
+    def getSignalsForUpdate(self, obj):
+        return super().getSignalsForUpdate(obj) + [
+            getattr(self.form, p).currentIndexChanged for p in self._ENUMS] + [self.form.RidgePass.stateChanged]

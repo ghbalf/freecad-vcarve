@@ -14,6 +14,7 @@ from vcarve_flat.toolpath import paths_to_commands
 
 RECT = [(0, 0), (40, 0), (40, 20), (0, 20)]
 RING = [(70, 10, 10), (70, 10, 4)]
+L_SHAPE = [(0, 0), (40, 0), (40, 10), (10, 10), (10, 30), (0, 30)]
 
 
 def cut_points(op):
@@ -24,6 +25,27 @@ def cut_points(op):
         if c.Name in ("G1", "G01"):
             out.append((pos["X"], pos["Y"], pos["Z"]))
     return np.array(out).reshape(-1, 3)
+
+
+def g1_segments(op):
+    """(start, end) XYZ arrays of the G1 moves that change XY."""
+    pos, out = np.zeros(3), []
+    for c in op.Path.Commands:
+        new = np.array([c.Parameters.get(k, v) for k, v in zip("XYZ", pos)])
+        if c.Name in ("G1", "G01") and np.hypot(*(new - pos)[:2]) > 0:
+            out.append((pos, new))
+        pos = new
+    return np.array([a for a, _ in out]), np.array([b for _, b in out])
+
+
+def z_on_path(points, segments):
+    """For each point, the lowest Z of the path points nearest to it in XY."""
+    a, b = segments
+    ab = (b - a)[None, :, :2]
+    t = np.clip((((points[:, None, :2] - a[None, :, :2]) * ab).sum(axis=2) / (ab ** 2).sum(axis=2)), 0, 1)
+    q = a[None] + t[..., None] * (b - a)[None]
+    d2 = ((q[..., :2] - points[:, None, :2]) ** 2).sum(axis=2)
+    return np.where(d2 <= d2.min(axis=1, keepdims=True) + 1e-9, q[..., 2], np.inf).min(axis=1)
 
 
 class OpVCarveTests(unittest.TestCase):
@@ -47,6 +69,8 @@ class OpVCarveTests(unittest.TestCase):
         op = op_vcarve.Create("VCarve", parentJob=self.job)
         op.ToolController = self.tc
         op.BaseShapes = list(bases)
+        if "StepDown" in props:
+            op.setExpression("StepDown", None)  # else the setup sheet's expression wins on recompute
         for k, v in props.items():
             setattr(op, k, v)
         self.doc.recompute()
@@ -82,6 +106,21 @@ class OpVCarveTests(unittest.TestCase):
         op = self.make_op([clone], FlatDepth=100.0)
         self.assertAlmostEqual(op.Path.BoundBox.ZMin, -self.vbit.cone_height, delta=0.05)
         self.assertTrue(self.logged(self.warn, "100"), self.warn.call_args_list)
+
+    def test_ring_of_circles(self):
+        """OCC's inward offset of an annulus of full circles returns the counter (1.1) or shrinks the hole
+        (1.0); the walls and the floor must still be the annulus."""
+        (ring,) = self.job_with(make_sketch(self.doc, "Ring", [], circles=RING))
+        op = self.make_op([ring], FlatDepth=1.0)
+        pts = cut_points(op)
+        r = np.hypot(pts[:, 0] - 70, pts[:, 1] - 10)
+        self.assertGreater(r.min(), 4 - 1e-6)  # the counter stays uncut
+        self.assertLess(r.max(), 10 + 1e-6)
+        rr = r[np.abs(pts[:, 2] + 1) < 1e-6]
+        rf = flat_radius(self.vbit, 1.0)
+        self.assertLess(np.abs(rr - (10 - rf)).min(), 0.02)  # the outer wall loop
+        self.assertLess(np.abs(rr - (4 + rf)).min(), 0.02)  # the inner wall loop
+        self.assertTrue(((rr > 4 + rf + 0.5) & (rr < 10 - rf - 0.5)).any())  # the floor
 
     def test_only_listed(self):
         _, ring = self.job_with(make_sketch(self.doc, "Rect", [RECT]),
@@ -136,6 +175,25 @@ class OpVCarveTests(unittest.TestCase):
         a, b = cut_points(whole), cut_points(edge)
         np.testing.assert_allclose(a.min(axis=0), b.min(axis=0), atol=0.01)
         np.testing.assert_allclose(a.max(axis=0), b.max(axis=0), atol=0.01)
+
+    def test_sharp_inner_corner(self):
+        # L with an inner corner at (10, 10): the wood kept is x > 10, y > 10, and at depth h its
+        # edge lies h*t further out with a sharp corner, so no cone and no floor may reach into it
+        (clone,) = self.job_with(make_sketch(self.doc, "L", [L_SHAPE]))
+        op = self.make_op([clone], FlatDepth=3.0)
+        t = np.tan(self.vbit.half_angle)
+        pts = cut_points(op)
+        for h in (0.5, 1.5, 2.5):
+            q = 10 - h * t
+            below = pts[pts[:, 2] < -h]
+            radius = self.vbit.tip_radius + (-h - below[:, 2]) * t
+            dist = np.hypot(np.maximum(q - below[:, 0], 0), np.maximum(q - below[:, 1], 0))
+            self.assertTrue(np.all(dist >= radius - 0.01), (h, (radius - dist).max()))
+        cs = op.Proxy.levels(op)[-1]
+        (faces,) = [fs for _, fs in op.Proxy.regions(op)]
+        r = 10 - cs.r_flat * 0.9  # just inside the round corner the floor had
+        self.assertFalse(any(f.isInside(App.Vector(r, r, f.BoundBox.ZMin), 1e-6, True)
+                             for f in op.Proxy.floor(op, cs, faces)))
 
     def test_sharp_bit_flat(self):
         (clone,) = self.job_with(make_sketch(self.doc, "Rect", [RECT]))
@@ -210,6 +268,51 @@ class OpVCarveTests(unittest.TestCase):
         op.Proxy.opUpdateDepths(op)  # must not raise
         self.assertTrue(self.logged(self.err, f"pick its tool controller {self.tc.Label}"),
                         self.err.call_args_list)
+
+    def test_stepdown_passes(self):
+        (clone,) = self.job_with(make_sketch(self.doc, "Rect", [RECT]))
+        one = self.make_op([clone], FlatDepth=3.0, StepDown=0)
+        multi = self.make_op([clone], FlatDepth=3.0, StepDown=1.0)
+        pts, ref = cut_points(multi), cut_points(one)
+        zs = np.round(pts[:, 2], 6)
+        for z in (-1, -2, -3):
+            self.assertIn(z, zs)
+        self.assertAlmostEqual(pts[:, 2].min(), ref[:, 2].min(), delta=1e-6)
+        self.assert_inside(pts, *ref[:, :2].min(axis=0), *ref[:, :2].max(axis=0))
+        segments = g1_segments(one)
+        for chunk in np.array_split(pts, max(1, len(pts) // 100)):
+            self.assertTrue(np.all(chunk[:, 2] >= z_on_path(chunk, segments) - 0.01))
+
+    def test_stepdown_zero_is_one_pass(self):
+        (clone,) = self.job_with(make_sketch(self.doc, "Rect", [RECT]))
+        a = self.make_op([clone], FlatDepth=3.0, StepDown=0)
+        b = self.make_op([clone], FlatDepth=3.0, StepDown=100.0)
+        np.testing.assert_array_equal(cut_points(a), cut_points(b))
+
+    def test_stepdown_no_flat_stops_when_unclamped(self):
+        # A slot carved 1.5 deep in full: levels 1 and 2 cut, level 2 clamps nothing, and the levels
+        # down to the cone height (8.66) would repeat it.
+        self.job_with(make_sketch(self.doc, "Rect", [RECT]))
+        w = 2 * flat_radius(self.vbit, 1.5)  # from the bit: its tip differs between FreeCAD versions
+        slot = make_sketch(self.doc, "Slot", [[(0, 0), (30, 0), (30, w), (0, w)]])
+        one = self.make_op([slot], StepDown=0)
+        multi = self.make_op([slot], StepDown=1.0)
+        plunges = lambda op: sum(1 for c in op.Path.Commands
+                                 if c.Name in ("G1", "G01") and set(c.Parameters) <= {"Z", "F"})
+        self.assertEqual(plunges(multi), 2 * plunges(one))
+        self.assertIn(-1, np.round(cut_points(multi)[:, 2], 6))
+        self.assertAlmostEqual(cut_points(multi)[:, 2].min(), cut_points(one)[:, 2].min(), delta=1e-6)
+        self.assertAlmostEqual(cut_points(one)[:, 2].min(), -1.5, delta=0.01)
+
+    def test_restored_without_stepdown(self):
+        (clone,) = self.job_with(make_sketch(self.doc, "Rect", [RECT]))
+        ref = self.make_op([clone], FlatDepth=3.0, StepDown=0)
+        op = self.make_op([clone], FlatDepth=3.0, StepDown=1.0)
+        op.removeProperty("StepDown")
+        op.Proxy.onDocumentRestored(op)  # a v1 document
+        self.assertEqual(op.StepDown.Value, 0)
+        op.recompute()
+        np.testing.assert_array_equal(cut_points(op), cut_points(ref))
 
 
 class ToolpathTests(unittest.TestCase):

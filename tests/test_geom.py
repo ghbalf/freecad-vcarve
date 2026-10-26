@@ -5,8 +5,8 @@ import numpy as np
 import pytest
 
 from vcarve_flat.geom import (
-    VBit, depth_for_radius, distances_to_segments, drop_collinear, drop_floor_runs, flat_radius, limit_depth, order_paths, rest_stepover,
-    simplify,
+    VBit, depth_for_radius, distances_to_segments, drop_collinear, drop_floor_runs, flat_radius, inlay_defaults, insert_crossings, narrow_points, limit_depth, order_paths,
+    pass_depths, plug_errors, rest_stepover, simplify,
 )
 
 V60 = VBit(10.0, 60.0, 0.0)
@@ -31,6 +31,37 @@ def test_flat_radius():
 def test_depth_for_radius_clamps():
     r = np.array([0.0, 0.05, 1.1, 50.0])
     assert depth_for_radius(V90, r, 2.0) == pytest.approx([0, 0, 1.0, 2.0])
+
+
+def test_depth_for_radius_min_depth():
+    r = [0.0, 0.1, 2.1]
+    assert depth_for_radius(V90, r, 1.0, min_depth=-0.5) == pytest.approx([-0.1, 0, 1.0])
+    assert depth_for_radius(V90, r, 1.0) == pytest.approx([0, 0, 1.0])
+
+
+def test_pass_depths():
+    assert pass_depths(3, 0) == [3]
+    assert pass_depths(3, 5) == [3]
+    assert pass_depths(3, 1.5) == [1.5, 3]
+    assert pass_depths(4, 1.5) == pytest.approx([1.5, 3, 4])
+    assert pass_depths(3 + 1e-9, 1.5) == pytest.approx([1.5, 3])
+
+
+def test_inlay_defaults():
+    assert inlay_defaults(VBit(10, 90, 0.1)) == pytest.approx((2.97, 0.2, 1.5))
+    p, g, s = inlay_defaults(VBit(10, 30, 0))
+    assert (p, s) == pytest.approx((3, 1.5))
+    assert inlay_defaults(VBit(4, 90, 0)) == pytest.approx((1.2, 0.2, 1.0))
+
+
+def test_plug_errors():
+    vb = VBit(10, 90, 0.1)
+    p, g, s = inlay_defaults(vb)
+    assert plug_errors(vb, p, g, s) == []
+    assert any("Glue Gap" in m for m in plug_errors(vb, p, 0, s)) and len(plug_errors(vb, p, 0, s)) == 1
+    assert len(plug_errors(vb, p, p, s)) == 1 and "Glue Gap" in plug_errors(vb, p, p, s)[0]
+    errs = plug_errors(vb, p, g, vb.cone_height + 0.5 - (p - g))
+    assert len(errs) == 1 and "0.5" in errs[0]
 
 
 def test_distances_to_segments():
@@ -111,3 +142,34 @@ def test_drop_floor_runs():
     # the slopes keep the floor point they reach; runs along the floor and lone floor points go
     assert [p[:, 0].tolist() for p in parts] == [[0, 1, 2], [4, 5, 6, 7, 8]]
     assert drop_floor_runs(path[2:5], -1.0) == []
+
+
+def test_insert_crossings():
+    # radius |x| along y = 0; level 1.2 is crossed twice between samples, level 3 is hit by a sample
+    xy = np.column_stack([np.arange(-2.0, 4.5, 1.0), np.zeros(7)])
+    out, r = insert_crossings(xy, np.abs(xy[:, 0]), lambda p: np.abs(p[:, 0]), [1.2, 3.0])
+    np.testing.assert_allclose(out[:, 0], [-2, -1.2, -1, 0, 1, 1.2, 2, 3, 4], atol=1e-9)
+    np.testing.assert_allclose(r, np.abs(out[:, 0]), atol=1e-9)
+    np.testing.assert_array_equal(insert_crossings(xy, np.abs(xy[:, 0]), None, [5.0])[0], xy)
+
+
+def _loop_segments(pts):
+    pts = np.asarray(pts, float)
+    return np.stack([pts, np.roll(pts, -1, axis=0)], axis=1)
+
+
+def test_narrow_points_gap_not_corners():
+    strip = _loop_segments([(0, 0), (10, 0), (10, 0.3), (0, 0.3)])
+    mid = np.column_stack([np.linspace(1, 9, 9), np.full(9, 0.15)])
+    assert narrow_points(mid, strip, 0.5).all()
+    assert not narrow_points(mid, strip, 0.1).any()  # 0.3 wide: not narrower than 0.2
+    ends = np.array([(0.1, 0.1), (0.05, 0.05), (9.9, 0.2)])  # on the strip's corner bisectors
+    assert not narrow_points(ends, strip, 0.5).any()
+
+
+def test_narrow_points_sharp_and_square_corners():
+    square = _loop_segments([(0, 0), (10, 0), (10, 10), (0, 10)])
+    assert not narrow_points(np.array([(0.3, 0.3), (9.8, 9.8)]), square, 0.5).any()
+    h = math.tan(math.radians(10))  # a 20 degree wedge with its tip at the origin
+    wedge = _loop_segments([(0, 0), (10, -10 * h), (10, 10 * h)])
+    assert not narrow_points(np.array([(1.0, 0), (2.0, 0)]), wedge, 0.5).any()

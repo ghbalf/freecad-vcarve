@@ -42,9 +42,39 @@ def flat_radius(vbit: VBit, depth: float) -> float:
     return vbit.tip_radius + depth * math.tan(vbit.half_angle)
 
 
-def depth_for_radius(vbit: VBit, r: np.ndarray, depth_limit: float) -> np.ndarray:
+def depth_for_radius(vbit: VBit, r: np.ndarray, depth_limit: float, min_depth: float = 0.0) -> np.ndarray:
     d = (np.asarray(r, float) - vbit.tip_radius) / math.tan(vbit.half_angle)
-    return np.clip(d, 0, depth_limit)
+    return np.clip(d, min_depth, depth_limit)
+
+
+def pass_depths(final: float, step: float) -> list:
+    """Step-down depths ending at final; a last step shorter than 1e-6 is merged into final."""
+    if step <= 0 or step >= final:
+        return [final]
+    n = int((final - 1e-6) // step)
+    return [step * i for i in range(1, n + 1)] + [final]
+
+
+def surface_gap(vbit: VBit, pocket_depth: float, glue_gap: float) -> float:
+    """The plug's Surface Gap create_inlay sets: 1.5 mm, less where the cone is too short."""
+    return min(1.5, vbit.cone_height - (pocket_depth - glue_gap))
+
+
+def inlay_defaults(vbit: VBit) -> tuple:
+    """(pocket depth P, glue gap G, surface gap S) that fit the bit's cone."""
+    p = min(3.0, 0.6 * vbit.cone_height)
+    return p, 0.2, surface_gap(vbit, p, 0.2)
+
+
+def plug_errors(vbit: VBit, pocket_depth: float, glue_gap: float, surface_gap: float) -> list:
+    errors = []
+    if glue_gap <= 0 or glue_gap >= pocket_depth:
+        errors.append(f"Glue Gap {glue_gap:g} mm must be above 0 and below the pocket depth {pocket_depth:g} mm.")
+    excess = pocket_depth - glue_gap + surface_gap - vbit.cone_height
+    if excess > 1e-9:
+        errors.append(f"Plug depth (pocket depth - Glue Gap + Surface Gap) exceeds the V-bit cone height "
+                      f"{vbit.cone_height:.2f} mm by {excess:.2f} mm.")
+    return errors
 
 
 def distances_to_segments(points: np.ndarray, segments: np.ndarray) -> np.ndarray:
@@ -60,6 +90,56 @@ def distances_to_segments(points: np.ndarray, segments: np.ndarray) -> np.ndarra
         t = np.clip(np.einsum("nmi,mi->nm", p - a, ab) * inv, 0, 1)
         d = p - (a + t[..., None] * ab)
         out[i:i + 2048] = np.sqrt(np.einsum("nmi,nmi->nm", d, d).min(axis=1))
+    return out
+
+
+def insert_crossings(xy: np.ndarray, r: np.ndarray, radius, levels) -> tuple:
+    """Insert into the polyline xy (radii r = radius(xy)) the points where the radius crosses one of
+    levels between two samples, found by bisection; returns (xy, r) with r = level there. The
+    clipped depth has a kink at those radii, and the chord between the samples would cut it off."""
+    xy, r = np.asarray(xy, float), np.asarray(r, float)
+    hits = [(k, level) for level in levels for k in np.nonzero((r[:-1] - level) * (r[1:] - level) < 0)[0]]
+    if not hits:
+        return xy, r
+    i, level = (np.array(v) for v in zip(*hits))
+    a, ab, rising = xy[i], xy[i + 1] - xy[i], r[i + 1] > r[i]
+    lo, hi = np.zeros(len(i)), np.ones(len(i))
+    for _ in range(40):
+        mid = (lo + hi) / 2
+        past = (radius(a + mid[:, None] * ab) > level) == rising
+        lo, hi = np.where(past, lo, mid), np.where(past, mid, hi)
+    u = (lo + hi) / 2
+    order = np.argsort(np.r_[np.arange(len(xy)), i + u], kind="stable")
+    return np.vstack([xy, a + u[:, None] * ab])[order], np.r_[r, level][order]
+
+
+def narrow_points(xy: np.ndarray, segments: np.ndarray, radius: float) -> np.ndarray:
+    """Mask of the medial-axis points xy that lie in a gap narrower than 2*radius. A point on the
+    bisector of a corner is not in a gap: the boundary tangents at its two footpoints meet at the
+    corner, on the boundary. Across a gap they are parallel or meet away from it."""
+    xy, segments = np.asarray(xy, float), np.asarray(segments, float)
+    out = np.zeros(len(xy), bool)
+    if not len(segments):
+        return out
+    a, ab = segments[:, 0], segments[:, 1] - segments[:, 0]
+    len2 = np.einsum("mi,mi->m", ab, ab)
+    inv = np.divide(1.0, len2, out=np.zeros_like(len2), where=len2 > 0)
+    r = distances_to_segments(xy, segments)
+    for i in np.nonzero(r < radius)[0]:
+        foot = a + np.clip(np.einsum("mi,mi->m", xy[i] - a, ab) * inv, 0, 1)[:, None] * ab
+        dist = np.hypot(*(foot - xy[i]).T)
+        near = foot[dist <= r[i] * (1 + 1e-3) + 1e-6]
+        f1 = foot[dist.argmin()]
+        f2 = near[np.hypot(*(near - f1).T).argmax()]
+        if np.hypot(*(f2 - f1)) < 1e-9:
+            continue  # one footpoint: the axis ends on the boundary
+        n = np.array([xy[i] - f1, xy[i] - f2])
+        det = n[0, 0] * n[1, 1] - n[0, 1] * n[1, 0]
+        if abs(det) < 1e-9 * r[i] ** 2:
+            out[i] = True  # parallel walls
+            continue
+        corner = np.linalg.solve(n, np.einsum("ij,ij->i", n, [f1, f2]))
+        out[i] = distances_to_segments(corner[None], segments)[0] > r[i]
     return out
 
 

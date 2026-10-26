@@ -14,6 +14,7 @@ from helpers import _tool, make_job, make_sketch
 from test_op_vcarve import RECT, cut_points
 from vcarve_flat import op_clearance, op_vcarve
 from vcarve_flat.compat import tool_shape
+from vcarve_flat.geom import flat_radius
 
 NECK = [(0, 0), (20, 0), (20, 7), (30, 7), (30, 0), (50, 0), (50, 20), (30, 20), (30, 13),
         (20, 13), (20, 20), (0, 20)]  # two 20 mm lobes joined by a 6 mm neck
@@ -68,7 +69,8 @@ class ClearanceTests(unittest.TestCase):
         self.assertLess(n(with_c), n(without))
         pts = np.vstack(with_c)
         # The neck is too narrow for the end mill, so it still gets rest clearing; the lobes' interiors don't.
-        self.assertTrue(np.any((pts[:, 0] > 22) & (pts[:, 0] < 28)))
+        self.assertTrue(any(np.all(np.abs(p[:, 1] - 10) < 3) and p[:, 0].min() < 22 and p[:, 0].max() > 28
+                            for p in map(np.asarray, with_c)))  # a pass along the neck
         lobe_core = (np.abs(pts[:, 0] - 10) < 5) & (np.abs(pts[:, 1] - 10) < 5)
         self.assertFalse(lobe_core.any())
 
@@ -154,6 +156,37 @@ class ClearanceTests(unittest.TestCase):
         msgs = [str(c.args[0]) for c in Path.Log.error.call_args_list if c.args]
         self.assertTrue(any(m.startswith("S:") and "command not done" in m for m in msgs), msgs)
 
+    def test_clearance_levels(self):
+        clr, vc = self.pair([NECK], flat=3.0)
+        vc.setExpression("StepDown", None)
+        vc.StepDown = 1.0
+        self.doc.recompute()
+        z = cut_points(clr)[:, 2]
+        self.assertEqual(set(np.round(z, 6)), {-1, -2, -3})
+        self.assertTrue(np.all(np.diff(z) <= 1e-9))
+
+    def test_clearance_dispatches_through_proxy(self):
+        clr, vc = self.pair([RECT])
+        cs = op_vcarve.carve_setup(vc)
+        level = op_vcarve.CarveSetup(cs.vbit, cs.z_top, 2.0, flat_radius(cs.vbit, 2.0), False, True)
+        square = Part.Face(Part.makePolygon([App.Vector(x, y, 0) for x, y in
+                                             [(100, 100), (110, 100), (110, 110), (100, 110), (100, 100)]]))
+        with mock.patch.object(vc.Proxy, "levels", return_value=[level]), \
+                mock.patch.object(vc.Proxy, "floor", return_value=[square]):
+            clr.recompute()
+        pts = cut_points(clr)
+        self.assertTrue(len(pts))
+        self.assertTrue(np.all((pts[:, :2] >= 100) & (pts[:, :2] <= 110)))
+        np.testing.assert_allclose(pts[:, 2], -2.0)
+
+    def test_end_mill_error_stops_clearance(self):
+        clr, vc = self.pair([RECT])
+        Path.Log.error.reset_mock()
+        with mock.patch.object(vc.Proxy, "end_mill_error", return_value="x"):
+            clr.recompute()
+        self.assertEqual(len(cut_points(clr)), 0)
+        Path.Log.error.assert_any_call(f"{clr.Label}: x")
+
     def test_create_pair_order(self):
         clr, vc = self.pair([RECT])
         ops = self.job.Operations.Group
@@ -162,6 +195,14 @@ class ClearanceTests(unittest.TestCase):
         first_mill = next(t for t in self.job.Tools.Group if tool_shape(t.Tool) == "Endmill")
         self.assertIs(clr.ToolController, first_mill)
         self.assertEqual(tool_shape(clr.ToolController.Tool), "Endmill")
+        self.assertEqual(tool_shape(vc.ToolController.Tool), "VBit")
+
+    def test_second_pair_keeps_its_controllers(self):
+        # ObjectOp starts a new op with the controller of the job's previous op
+        self.pair([RECT])
+        clr, vc = op_clearance.create_pair(self.job)
+        self.assertEqual(tool_shape(clr.ToolController.Tool), "Endmill")
+        self.assertEqual(clr.OpToolDiameter.Value, clr.ToolController.Tool.Diameter.Value)
         self.assertEqual(tool_shape(vc.ToolController.Tool), "VBit")
 
     def test_create_pair_missing_vbit(self):

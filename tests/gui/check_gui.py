@@ -4,7 +4,9 @@ Prints GUI-CHECK-OK and exits 0 on success; prints the traceback and exits 1 oth
 import os
 import sys
 import tempfile
+import types
 import traceback
+from unittest import mock
 
 import FreeCAD as App
 import FreeCADGui as Gui
@@ -12,7 +14,7 @@ from PySide import QtCore, QtGui
 
 # The addon link made by tests/test_gui.py; gives the test helpers without relying on __file__.
 sys.path.insert(0, os.path.join(os.environ["FREECAD_USER_HOME"], "Mod", "freecad-vcarve", "tests", "fc"))
-NAMES = ["CAM_VCarveFlat", "CAM_VCarveClearance", "CAM_VCarvePair"]
+NAMES = ["CAM_VCarveFlat", "CAM_VCarveClearance", "CAM_VCarvePair", "CAM_VCarvePlug", "CAM_VCarveInlay"]
 
 
 def toolbar_entries(title):
@@ -39,6 +41,12 @@ def main():
     home = os.path.realpath(os.environ["FREECAD_USER_HOME"])
     data = os.path.realpath(App.getUserAppDataDir())
     assert data.startswith(home), f"FREECAD_USER_HOME not honored: user data dir is {data}"
+    # A warning shown as a notification popup deadlocks FreeCAD 1.0 offscreen (see tests/test_gui.py).
+    Gui.getMainWindow().activateWindow()
+    App.Console.PrintWarning("GUI check: notification probe\n")
+    loop = QtCore.QEventLoop()  # past the notification area's 250 ms delay
+    QtCore.QTimer.singleShot(1000, loop.quit)
+    loop.exec_()
 
     Gui.activateWorkbench("CAMWorkbench")
     QtGui.QApplication.processEvents()
@@ -97,6 +105,8 @@ def main():
     Gui.Selection.clearSelection()
     Gui.Selection.addSelection(job.Stock)
     assert Gui.Selection.getSelection() == [job.Stock], "clearance panel gates the selection"
+    step_down = [p.form.stepDown for p in clr.ViewObject.Proxy.panel.featurePages if hasattr(p.form, "stepDown")]
+    assert step_down and all(w.isHidden() for w in step_down), "clearance panel shows Step Down"
     clr.ViewObject.Proxy.panel.reject()
     QtGui.QApplication.processEvents()
     for link in (None, stray):  # a link the combo does not list must survive OK
@@ -149,6 +159,72 @@ def main():
     check_icons(ops)
     for op in ops:
         edit(op)
+
+    from vcarve_flat.compat import tool_shape
+    from vcarve_flat.geom import inlay_defaults
+    from vcarve_flat.gui import inlay_dialog, panels
+    from vcarve_flat.op_vcarve import tool_vbit
+    Gui.Selection.clearSelection()
+    warnings[:] = []
+    Gui.runCommand("CAM_VCarveInlay")
+    assert len(warnings) == 1 and len(PathUtils.GetJobs()) == 1, warnings
+
+    job0 = PathUtils.GetJobs()[0]
+    vtc = next(t for t in job0.Tools.Group if tool_shape(t.Tool) == "VBit")
+    etc = next(t for t in job0.Tools.Group if tool_shape(t.Tool) == "Endmill")
+    narrow = Controller.Create("Narrow", tool=_tool(doc, "60degree_Vbit"))
+    narrow.Tool.Diameter = 4
+    dialog = inlay_dialog.InlayDialog(job0, [vtc, narrow], [etc])
+    ok = dialog.buttons.button(QtGui.QDialogButtonBox.Ok)
+    assert dialog.parent() == Gui.getMainWindow(), "dialog has no parent window"
+    p, g, _ = inlay_defaults(tool_vbit(vtc))
+    assert ok.isEnabled() and not dialog.error.text(), dialog.error.text()
+    assert abs(dialog.pocket.value() - p) < 0.01 and abs(dialog.glue.value() - g) < 0.01
+    dialog.pocket.setValue(tool_vbit(vtc).cone_height + dialog.glue.value() + 0.1)  # P - G passes the cone height
+    assert not ok.isEnabled() and dialog.error.text(), "too deep a pocket is accepted"
+    dialog.vbit.setCurrentIndex(1)
+    p2, g2, _ = inlay_defaults(tool_vbit(narrow))
+    assert abs(p2 - p) > 0.1, "the test V-bits do not differ"
+    assert abs(dialog.pocket.value() - p2) < 0.01 and abs(dialog.glue.value() - g2) < 0.01, "V-bit change keeps P and G"
+    assert ok.isEnabled() and not dialog.error.text()
+
+    ops0, tools0 = list(job0.Operations.Group), list(job0.Tools.Group)
+    seen = []
+    with mock.patch.object(inlay_dialog.InlayDialog, "exec_",
+                           lambda self: seen.append(self.values()) or QtGui.QDialog.Accepted):
+        Gui.Selection.addSelection(doc.getObject("Letters"))
+        Gui.runCommand("CAM_VCarveInlay")
+        QtGui.QApplication.processEvents()
+    assert len(warnings) == 1 and len(seen) == 1, warnings
+    assert set(seen[0]) == {"vtc", "etc", "pocket_depth", "glue_gap", "boundary", "ridge"}, seen
+    jobs = PathUtils.GetJobs()
+    assert len(jobs) == 3, [j.Label for j in jobs]
+    assert (list(job0.Operations.Group), list(job0.Tools.Group)) == (ops0, tools0), "Inlay changed the selected Job"
+    qjob, pjob = (next(j for j in jobs if j.Label == f"Letters {s}") for s in ("Pocket", "Plug"))
+    for j in jobs:
+        for op in j.Operations.Group:
+            want = "Endmill" if hasattr(op, "VCarveOp") else "VBit"
+            assert tool_shape(op.ToolController.Tool) == want, f"{j.Label}/{op.Label}: {op.ToolController.Label}"
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(pjob.Model.Group[0])  # the plug Job's clone picks the plug Job
+    assert commands._find_job() == pjob, commands._find_job().Label
+    pclr, plug = pjob.Operations.Group
+    new_ops = [*qjob.Operations.Group, pclr, plug]
+    assert all(abs(op.StepDown.Value - 1.5) < 1e-9 for op in new_ops), [op.StepDown for op in new_ops]
+    check_icons([pclr, plug])
+    assert plug.PocketOp is not None
+    page = types.SimpleNamespace(job=pjob)
+    assert plug in panels.ClearanceOpPage._vcarve_ops(page), "clearance combo omits the plug op"
+
+    pocket = plug.PocketOp
+    plug.Active = False  # its recompute is slow and not under test
+    plug.ViewObject.Document.setEdit(plug.ViewObject, 0)
+    assert any(isinstance(p, panels.PlugOpPage) for p in plug.ViewObject.Proxy.panel.featurePages)
+    for p in plug.ViewObject.Proxy.panel.featurePages:
+        p.setDirty()
+    plug.ViewObject.Proxy.panel.accept()
+    QtGui.QApplication.processEvents()
+    assert plug.PocketOp == pocket, "OK lost PocketOp"
 
     job = PathUtils.GetJobs()[0]  # last: after its panel, 1.0.2 hangs closing the next one
     job.ViewObject.Document.setEdit(job.ViewObject, 0)  # its Setup tab lists the registered ops' defaults

@@ -7,20 +7,24 @@ import os
 
 import FreeCAD as App
 import FreeCADGui as Gui
+import Path.Main.Gui.Job as JobGui
 import Path.Op.Base as PathOp
 import Path.Op.Gui.Base as PathOpGui
 import PathScripts.PathUtils as PathUtils
 from PySide import QtCore, QtGui
 
-from .. import op_clearance, op_vcarve
+from .. import inlay, op_clearance, op_plug, op_vcarve  # noqa: F401  (op_plug: registers it with the setup sheet)
+from ..compat import tool_shape
 from ..sketches import is_sketch_base
-from . import panels, selection
+from . import inlay_dialog, panels, selection
 
 translate = App.Qt.translate
 ICONS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "resources", "icons")
-_ICON = {"VCarveOpPage": "vcarve_flat.svg", "ClearanceOpPage": "vcarve_clearance.svg"}
+_ICON = {"VCarveOpPage": "vcarve_flat.svg", "ClearanceOpPage": "vcarve_clearance.svg",
+         "PlugOpPage": "vcarve_plug.svg"}
 _NO_TC = {"VCarveFlat": "Add a V-bit tool controller to the job",
-          "VCarveClearance": "Add an end mill tool controller to the job"}
+          "VCarveClearance": "Add an end mill tool controller to the job",
+          "VCarvePlug": "Add a V-bit tool controller to the job"}
 
 
 class ViewProvider(PathOpGui.ViewProvider):
@@ -50,7 +54,7 @@ def _find_job():
     jobs = PathUtils.GetJobs()
     for sel in Gui.Selection.getSelection():
         for job in jobs:
-            if job.Proxy.resourceClone(job, sel) or PathUtils.findParentJob(sel) == job:
+            if selection.job_clone(job, sel) or PathUtils.findParentJob(sel) == job:
                 return job
     if len(jobs) == 1:
         return jobs[0]
@@ -92,7 +96,7 @@ def _add_selection(op, job):
     are reported in one warning each."""
     shapes, skipped, no_edges = list(op.BaseShapes), [], []
     for sel in Gui.Selection.getSelectionEx():
-        model = job.Proxy.resourceClone(job, sel.Object)
+        model = selection.job_clone(job, sel.Object)
         if model is None or not is_sketch_base(model):
             skipped.append(sel.Object.Label)
             continue
@@ -142,6 +146,51 @@ class _PairCommand:
         QtCore.QTimer.singleShot(0, lambda: vcarve.ViewObject.Document.setEdit(vcarve.ViewObject, 0))
 
 
+class _InlayCommand:
+    def __init__(self, vcarve_res, clearance_res, plug_res):
+        self.res = vcarve_res, clearance_res, plug_res
+
+    def Activated(self):
+        job = _find_job()
+        if job is None:
+            return
+        selected = Gui.Selection.getSelection()
+        if len(selected) != 1 or not is_sketch_base(selected[0]):
+            _warn(translate("CAM_VCarve", "Select exactly one sketch"))
+            return
+        tcs = job.Tools.Group
+        vtcs = [tc for tc in tcs if tool_shape(tc.Tool) == "VBit"]
+        etcs = [tc for tc in tcs if tool_shape(tc.Tool) == "Endmill"]
+        if not vtcs or not etcs:
+            _warn(translate("CAM_VCarve", "The Job needs a V-bit and an end mill tool controller"))
+            return
+        dialog = inlay_dialog.InlayDialog(job, vtcs, etcs)
+        if not dialog.exec_():
+            return
+        doc = App.ActiveDocument
+        doc.openTransaction("Create V-Carve Inlay")
+        try:
+            pocket_job, pocket, plug_job, plug = inlay.create_inlay(job, selected[0], **dialog.values())
+            for new_job in (pocket_job, plug_job):  # as JobGui.Create
+                new_job.ViewObject.Proxy = JobGui.ViewProvider(new_job.ViewObject)
+                new_job.ViewObject.addExtension("Gui::ViewProviderGroupExtensionPython")
+                new_job.ViewObject.Proxy.deleteOnReject = False
+            vcarve_res, clearance_res, plug_res = self.res
+            for (clearance, carve), carve_res in ((pocket, vcarve_res), (plug, plug_res)):
+                _attach(clearance, clearance_res, False)
+                _attach(carve, carve_res, False)
+        except ValueError as e:
+            doc.abortTransaction()
+            doc.recompute()
+            _warn(str(e))
+            return
+        except Exception:
+            doc.abortTransaction()
+            raise
+        doc.commitTransaction()
+        doc.recompute()
+
+
 _COMMANDS = {}
 
 
@@ -155,6 +204,9 @@ def register():
                      "V-Carve Flat", "V-carve sketches with a flat floor")
         clearance = res("VCarveClearance", op_clearance.Create, panels.ClearanceOpPage,
                         "vcarve_clearance", "V-Carve Clearance", "Clear the flat floor of a V-carve op")
+        plug = res("VCarvePlug", op_plug.Create, panels.PlugOpPage, "vcarve_plug",
+                   "V-Carve Plug", "Carve the plug of a V-carve inlay")
         _COMMANDS.update(CAM_VCarveFlat=_OpCommand(vcarve), CAM_VCarveClearance=_OpCommand(clearance),
-                         CAM_VCarvePair=_PairCommand(vcarve, clearance))
+                         CAM_VCarvePair=_PairCommand(vcarve, clearance), CAM_VCarvePlug=_OpCommand(plug),
+                         CAM_VCarveInlay=_InlayCommand(vcarve, clearance, plug))
     return _COMMANDS
