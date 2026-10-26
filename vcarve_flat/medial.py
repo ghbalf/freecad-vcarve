@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 """Medial axis of a face (Path.Voronoi) -> V-carve polylines with flat-depth clamping."""
+import math
+
 import FreeCAD as App
 import numpy as np
 import Path
@@ -7,7 +9,8 @@ from Path.Op.Vcarve import (BORDERLINE, COLINEAR, EXTERIOR1, EXTERIOR2, PRIMARY,
                             _collectVoronoiWires)
 
 from .clearing import offset_faces
-from .geom import depth_for_radius, distances_to_segments, drop_collinear, drop_floor_runs, flat_radius, simplify
+from .geom import (depth_for_radius, distances_to_segments, drop_collinear, drop_floor_runs, flat_radius,
+                   insert_crossings, simplify)
 
 
 def _closed_loop(wire, deflection) -> np.ndarray:
@@ -59,6 +62,15 @@ def medial_polylines(face, segments, colinear_deg: float, step: float) -> list:
     return out
 
 
+def _depths(vbit, xy, segments, lo, hi) -> tuple:
+    """Clipped V depths along xy, with the points where the clip starts inserted."""
+    def radius(p):
+        return distances_to_segments(p, segments)
+    levels = [vbit.tip_radius + d * math.tan(vbit.half_angle) for d in (lo, hi)]
+    xy, r = insert_crossings(xy, radius(xy), radius, levels)
+    return xy, depth_for_radius(vbit, r, hi, lo)
+
+
 def carve_polylines(face, vbit, z_top, depth_limit, *, deflection, colinear_deg, step, tol,
                     drop_floor=False, min_depth=0.0) -> list:
     """V-bit paths along the medial axis; drop_floor leaves out their runs on the flat floor
@@ -68,7 +80,7 @@ def carve_polylines(face, vbit, z_top, depth_limit, *, deflection, colinear_deg,
         return []
     paths = []
     for xy in medial_polylines(face, segments, colinear_deg, step):
-        depth = depth_for_radius(vbit, distances_to_segments(xy, segments), depth_limit, min_depth)
+        xy, depth = _depths(vbit, xy, segments, min_depth, depth_limit)
         path = np.column_stack([xy, z_top - depth])
         paths += drop_floor_runs(path, z_top - depth_limit) if drop_floor else [path]
     return [simplify(p, tol) for p in paths]
@@ -84,7 +96,7 @@ def ridge_polylines(face, vbit, z_base, height, *, deflection, colinear_deg, ste
         return []
     paths = []
     for xy in medial_polylines(face, segments, colinear_deg, step):
-        up = depth_for_radius(vbit, distances_to_segments(xy, segments), height)
+        xy, up = _depths(vbit, xy, segments, 0.0, height)
         path = np.column_stack([xy, -(z_base + up)])
         paths += [p * [1, 1, -1] for p in drop_floor_runs(path, -(z_base + height))]
     return [simplify(p, tol) for p in paths]

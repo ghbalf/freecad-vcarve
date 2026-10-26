@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from vcarve_flat.geom import (
-    VBit, depth_for_radius, distances_to_segments, drop_collinear, drop_floor_runs, flat_radius, inlay_defaults, limit_depth, order_paths,
+    VBit, depth_for_radius, distances_to_segments, drop_collinear, drop_floor_runs, flat_radius, inlay_defaults, insert_crossings, limit_depth, order_paths,
     pass_depths, plug_errors, rest_stepover, simplify,
 )
 
@@ -142,3 +142,12 @@ def test_drop_floor_runs():
     # the slopes keep the floor point they reach; runs along the floor and lone floor points go
     assert [p[:, 0].tolist() for p in parts] == [[0, 1, 2], [4, 5, 6, 7, 8]]
     assert drop_floor_runs(path[2:5], -1.0) == []
+
+
+def test_insert_crossings():
+    # radius |x| along y = 0; level 1.2 is crossed twice between samples, level 3 is hit by a sample
+    xy = np.column_stack([np.arange(-2.0, 4.5, 1.0), np.zeros(7)])
+    out, r = insert_crossings(xy, np.abs(xy[:, 0]), lambda p: np.abs(p[:, 0]), [1.2, 3.0])
+    np.testing.assert_allclose(out[:, 0], [-2, -1.2, -1, 0, 1, 1.2, 2, 3, 4], atol=1e-9)
+    np.testing.assert_allclose(r, np.abs(out[:, 0]), atol=1e-9)
+    np.testing.assert_array_equal(insert_crossings(xy, np.abs(xy[:, 0]), None, [5.0])[0], xy)

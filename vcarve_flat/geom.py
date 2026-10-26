@@ -90,6 +90,26 @@ def distances_to_segments(points: np.ndarray, segments: np.ndarray) -> np.ndarra
     return out
 
 
+def insert_crossings(xy: np.ndarray, r: np.ndarray, radius, levels) -> tuple:
+    """Insert into the polyline xy (radii r = radius(xy)) the points where the radius crosses one of
+    levels between two samples, found by bisection; returns (xy, r) with r = level there. The
+    clipped depth has a kink at those radii, and the chord between the samples would cut it off."""
+    xy, r = np.asarray(xy, float), np.asarray(r, float)
+    hits = [(k, level) for level in levels for k in np.nonzero((r[:-1] - level) * (r[1:] - level) < 0)[0]]
+    if not hits:
+        return xy, r
+    i, level = (np.array(v) for v in zip(*hits))
+    a, ab, rising = xy[i], xy[i + 1] - xy[i], r[i + 1] > r[i]
+    lo, hi = np.zeros(len(i)), np.ones(len(i))
+    for _ in range(40):
+        mid = (lo + hi) / 2
+        past = (radius(a + mid[:, None] * ab) > level) == rising
+        lo, hi = np.where(past, lo, mid), np.where(past, mid, hi)
+    u = (lo + hi) / 2
+    order = np.argsort(np.r_[np.arange(len(xy)), i + u], kind="stable")
+    return np.vstack([xy, a + u[:, None] * ab])[order], np.r_[r, level][order]
+
+
 def drop_collinear(loop: np.ndarray, eps: float) -> np.ndarray:
     """Closed 2D loop (last point not repeated) without points closer than eps to the chord of their
     neighbours. Collinear boundary points give Path.Voronoi degenerate parabolic edges."""

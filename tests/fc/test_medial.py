@@ -93,6 +93,17 @@ class MedialTests(unittest.TestCase):
         boxes = [(p[:, 0].min(), p[:, 1].min(), p[:, 0].max(), p[:, 1].max()) for p in loops]
         self.assertTrue(any(np.allclose(b, (2, 2, 38, 18), atol=0.01) for b in boxes), boxes)
 
+    def test_clamp_kink_not_cut_off(self):
+        # Samples StepLength apart skipped the point where the depth reaches the clamp; the chord
+        # across that kink was up to 0.03 mm shallower than the V surface (the plug collided there)
+        vbit, sq = VBit(10, 60, 0), poly_face([(0, 0), (10, 0), (10, 10), (0, 10)])
+        segs = boundary_segments(sq, KW["deflection"])
+        for p in carve_polylines(sq, vbit, 0.0, 3.0, **KW):
+            u = np.linspace(0, 1, 11)[:, None, None]
+            pts = (p[:-1] + u * (p[1:] - p[:-1])).reshape(-1, 3)
+            true = -depth_for_radius(vbit, distances_to_segments(pts[:, :2], segs), 3.0)
+            self.assertLessEqual((pts[:, 2] - true).max(), KW["tol"] + 1e-6)
+
     def test_carve_min_depth(self):
         bar = poly_face([(0, 0), (40, 0), (40, 2), (0, 2)])
         paths = carve_polylines(bar, VBit(10, 90, 3.0), 0.0, 2.0, min_depth=-1, **KW)
