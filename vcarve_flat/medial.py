@@ -27,6 +27,11 @@ def boundary_segments(face, deflection: float) -> np.ndarray:
     return np.concatenate(segs) if segs else np.empty((0, 2, 2))
 
 
+def _chord(a, b, step) -> list:
+    n = max(2, math.ceil(math.dist(a, b) / step) + 1)
+    return list(zip(np.linspace(a[0], b[0], n), np.linspace(a[1], b[1], n)))
+
+
 def medial_polylines(face, segments, colinear_deg: float, step: float) -> list:
     vd = Path.Voronoi.Diagram()
     for a, b in segments:
@@ -56,11 +61,11 @@ def medial_polylines(face, segments, colinear_deg: float, step: float) -> list:
                 continue
             edge_pts = [(p.x, p.y) for p in shape.discretize(Distance=step)]
             ends = [(p.x, p.y) for p in (v.toPoint(z) for v in edge.Vertices)]
-            if len(ends) == 2 and min(math.dist(edge_pts[0], a) + math.dist(edge_pts[-1], b)
-                                      for a, b in (ends, ends[::-1])) > 1e-3:
-                # FreeCAD 26.3 discretizes some short parabolic edges far from their ends: take the chord
-                n = max(2, math.ceil(math.dist(*ends) / step) + 1)
-                edge_pts = list(zip(*(np.linspace(a, b, n) for a, b in zip(*ends))))
+            if len(ends) == 2 and min(max(math.dist(edge_pts[0], a), math.dist(edge_pts[-1], b))
+                                      for a, b in (ends, ends[::-1])) > max(step, math.dist(*ends)):
+                # FreeCAD 26.3 discretizes some short parabolic edges far from their ends (43 mm); the
+                # ends of a sound one miss its vertices by up to 0.05 mm
+                edge_pts = _chord(*ends, step)
             for p in edge_pts:
                 if not pts or np.hypot(p[0] - pts[-1][0], p[1] - pts[-1][1]) > 1e-9:
                     pts.append(p)

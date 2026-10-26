@@ -1,12 +1,14 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 import math
 import unittest
+from unittest import mock
 
 import FreeCAD as App
 import numpy as np
 import Part
 import Path
 
+from vcarve_flat import medial
 from vcarve_flat.clearing import offset_faces, pocket_polylines, subtract, swept_faces
 from vcarve_flat.geom import VBit, depth_for_radius, distances_to_segments
 from vcarve_flat.medial import boundary_segments, carve_polylines, flat_boundary_loops, ridge_polylines
@@ -57,6 +59,23 @@ class MedialTests(unittest.TestCase):
         face, = faces_from_loops("A", wires)
         paths = carve_polylines(face, VBit(10, 90, 0.1), 0.0, 1.0, **KW)
         self.assertTrue(paths)
+
+    def test_medial_keeps_parabolas(self):
+        # FreeCAD's discretized parabolic Voronoi edges miss their vertices by up to 0.05 mm: taking
+        # those as broken (the 26.3 fault is 43 mm) put chords up to 0.078 mm off the medial axis
+        def octagon(r):
+            return [V(r * math.cos(k * math.pi / 4 + 0.3), r * math.sin(k * math.pi / 4 + 0.3), 0) for k in range(8)]
+        a1 = Part.Arc(V(20, -2, 0), V(22, 0, 0), V(20, 2, 0)).toShape()
+        a2 = Part.Arc(V(0, 2, 0), V(-2, 0, 0), V(0, -2, 0)).toShape()
+        slot = Part.Wire([Part.makeLine(V(0, -2, 0), V(20, -2, 0)), a1, Part.makeLine(V(20, 2, 0), V(0, 2, 0)), a2])
+        shapes = {"O": [Part.makePolygon(octagon(r) + octagon(r)[:1]) for r in (10, 6)],
+                  "slot": [Part.makePolygon([V(-5, -5, 0), V(25, -5, 0), V(25, 5, 0), V(-5, 5, 0), V(-5, -5, 0)]),
+                           slot]}
+        for name, wires in shapes.items():
+            face, = faces_from_loops(name, wires)
+            with mock.patch.object(medial, "_chord", wraps=medial._chord) as chord:
+                self.assertTrue(medial.medial_polylines(face, boundary_segments(face, 0.01), 10.0, 0.5))
+            self.assertFalse(chord.called, name)
 
     def test_rectangle_depth(self):
         vbit = VBit(10, 90, 0)
