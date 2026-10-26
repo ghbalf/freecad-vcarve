@@ -196,6 +196,14 @@ class ClearanceTests(unittest.TestCase):
         self.assertEqual(tool_shape(clr.ToolController.Tool), "Endmill")
         self.assertEqual(tool_shape(vc.ToolController.Tool), "VBit")
 
+    def test_second_pair_keeps_its_controllers(self):
+        # ObjectOp starts a new op with the controller of the job's previous op
+        self.pair([RECT])
+        clr, vc = op_clearance.create_pair(self.job)
+        self.assertEqual(tool_shape(clr.ToolController.Tool), "Endmill")
+        self.assertEqual(clr.OpToolDiameter.Value, clr.ToolController.Tool.Diameter.Value)
+        self.assertEqual(tool_shape(vc.ToolController.Tool), "VBit")
+
     def test_create_pair_missing_vbit(self):
         sk = make_sketch(self.doc, "S", [RECT])
         job, _ = make_job(self.doc, [sk], bits=("5mm_Endmill",))

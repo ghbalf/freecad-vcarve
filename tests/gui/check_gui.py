@@ -6,6 +6,7 @@ import sys
 import tempfile
 import types
 import traceback
+from unittest import mock
 
 import FreeCAD as App
 import FreeCADGui as Gui
@@ -159,21 +160,51 @@ def main():
     for op in ops:
         edit(op)
 
+    from vcarve_flat.compat import tool_shape
+    from vcarve_flat.geom import inlay_defaults
     from vcarve_flat.gui import inlay_dialog, panels
+    from vcarve_flat.op_vcarve import tool_vbit
     Gui.Selection.clearSelection()
     warnings[:] = []
     Gui.runCommand("CAM_VCarveInlay")
     assert len(warnings) == 1 and len(PathUtils.GetJobs()) == 1, warnings
+
+    job0 = PathUtils.GetJobs()[0]
+    vtc = next(t for t in job0.Tools.Group if tool_shape(t.Tool) == "VBit")
+    etc = next(t for t in job0.Tools.Group if tool_shape(t.Tool) == "Endmill")
+    narrow = Controller.Create("Narrow", tool=_tool(doc, "60degree_Vbit"))
+    narrow.Tool.Diameter = 4
+    dialog = inlay_dialog.InlayDialog(job0, [vtc, narrow], [etc])
+    ok = dialog.buttons.button(QtGui.QDialogButtonBox.Ok)
+    assert dialog.parent() == Gui.getMainWindow(), "dialog has no parent window"
+    p, g, _ = inlay_defaults(tool_vbit(vtc))
+    assert ok.isEnabled() and not dialog.error.text(), dialog.error.text()
+    assert abs(dialog.pocket.value() - p) < 0.01 and abs(dialog.glue.value() - g) < 0.01
+    dialog.pocket.setValue(tool_vbit(vtc).cone_height + dialog.glue.value() + 0.1)  # P - G passes the cone height
+    assert not ok.isEnabled() and dialog.error.text(), "too deep a pocket is accepted"
+    dialog.vbit.setCurrentIndex(1)
+    p2, g2, _ = inlay_defaults(tool_vbit(narrow))
+    assert abs(p2 - p) > 0.1, "the test V-bits do not differ"
+    assert abs(dialog.pocket.value() - p2) < 0.01 and abs(dialog.glue.value() - g2) < 0.01, "V-bit change keeps P and G"
+    assert ok.isEnabled() and not dialog.error.text()
+
     seen = []
-    inlay_dialog.InlayDialog.exec_ = lambda self: seen.append(self.values()) or QtGui.QDialog.Accepted
-    Gui.Selection.addSelection(doc.getObject("Letters"))
-    Gui.runCommand("CAM_VCarveInlay")
-    QtGui.QApplication.processEvents()
+    with mock.patch.object(inlay_dialog.InlayDialog, "exec_",
+                           lambda self: seen.append(self.values()) or QtGui.QDialog.Accepted):
+        Gui.Selection.addSelection(doc.getObject("Letters"))
+        Gui.runCommand("CAM_VCarveInlay")
+        QtGui.QApplication.processEvents()
     assert len(warnings) == 1 and len(seen) == 1, warnings
     assert set(seen[0]) == {"vtc", "etc", "pocket_depth", "glue_gap", "boundary", "ridge"}, seen
     jobs = PathUtils.GetJobs()
     assert len(jobs) == 2, [j.Label for j in jobs]
+    for j in jobs:
+        for op in j.Operations.Group:
+            want = "Endmill" if hasattr(op, "VCarveOp") else "VBit"
+            assert tool_shape(op.ToolController.Tool) == want, f"{j.Label}/{op.Label}: {op.ToolController.Label}"
     pclr, plug = jobs[1].Operations.Group
+    new_ops = [*jobs[0].Operations.Group[-2:], pclr, plug]
+    assert all(abs(op.StepDown.Value - 1.5) < 1e-9 for op in new_ops), [op.StepDown for op in new_ops]
     check_icons([pclr, plug])
     assert plug.PocketOp is not None
     page = types.SimpleNamespace(job=jobs[1])

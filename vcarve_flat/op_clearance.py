@@ -153,6 +153,9 @@ def Create(name, obj=None, parentJob=None, tc=None):
     if obj is None:
         obj = App.ActiveDocument.addObject("Path::FeaturePython", name)
     obj.Proxy = ObjectVCarveClearance(obj, name, parentJob, tc)
+    if tc is not None and obj.ToolController != tc:  # ObjectOp starts with the previous op's controller
+        obj.ToolController = tc
+        obj.OpToolDiameter = tc.Tool.Diameter
     return obj
 
 

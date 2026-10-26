@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 """The V-Carve Inlay dialog: the few numbers that set up a pocket and its plug."""
 import FreeCAD as App
+import FreeCADGui as Gui
 from PySide import QtGui
 
 from ..geom import inlay_defaults, plug_errors, surface_gap
@@ -22,7 +23,7 @@ def _mm(low, high):
 
 class InlayDialog(QtGui.QDialog):
     def __init__(self, job, vtcs, etcs):
-        super().__init__()
+        super().__init__(Gui.getMainWindow())
         self.setWindowTitle(translate("CAM_VCarve", "V-Carve Inlay"))
         self.vtcs, self.etcs = list(vtcs), list(etcs)
         form = QtGui.QFormLayout(self)
@@ -64,6 +65,9 @@ class InlayDialog(QtGui.QDialog):
     def _check(self):
         vbit, p, g = self._vbit(), self.pocket.value(), self.glue.value()
         errors = plug_errors(vbit, p, g, surface_gap(vbit, p, g))
+        if p - g >= vbit.cone_height:
+            errors.append(translate("CAM_VCarve", "Pocket depth - Glue Gap must stay below the V-bit cone height "
+                                    "{:.2f} mm.").format(vbit.cone_height))
         self.error.setText("\n".join(errors))
         self.buttons.button(QtGui.QDialogButtonBox.Ok).setEnabled(not errors)
 

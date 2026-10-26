@@ -181,7 +181,7 @@ class _InlayCommand:
         except ValueError as e:
             doc.abortTransaction()
             doc.recompute()
-            _warn(translate("CAM_VCarve", str(e)))
+            _warn(str(e))
             return
         except Exception:
             doc.abortTransaction()
