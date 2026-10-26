@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
-import math
 import unittest
 from unittest import mock
 
@@ -7,20 +6,15 @@ import FreeCAD as App
 import numpy as np
 import Path
 import Part
-import Path.Main.Job
-import Path.Tool.Controller
 
-from helpers import _tool, make_job, make_sketch
+from fit import make_inlay
+from test_fit import LETTERS, LOOPS, THIN
 from test_op_vcarve import RECT, RING, cut_points
-from vcarve_flat import op_clearance, op_plug
 from vcarve_flat.clearing import area_offset
-from vcarve_flat.geom import VBit, flat_radius, inlay_defaults, pass_depths
+from vcarve_flat.geom import flat_radius, pass_depths
 from vcarve_flat.medial import boundary_segments, medial_polylines
 
 BAR = [(0, 0), (30, 0), (30, 2), (0, 2)]
-BAR3 = [(0, 24), (30, 24), (30, 27), (0, 27)]
-THIN_BAR = [(58, 22), (80, 22), (80, 22.8), (58, 22.8)]
-LETTERS = [[(34, 24), (44, 24), (44, 34), (34, 34)], [(44.3, 24), (54.3, 24), (54.3, 34), (44.3, 34)]]
 
 
 class PlugTests(unittest.TestCase):
@@ -38,42 +32,7 @@ class PlugTests(unittest.TestCase):
 
     def inlay(self, loops=(RECT,), circles=RING, tip=None, stock=None, **props):
         """Pocket pair (Flat Depth P) and plug pair on the same sketch; returns the plug op."""
-        sk = make_sketch(self.doc, "S", list(loops), circles)
-        job, tcs = make_job(self.doc, [sk])
-        if tip is not None:
-            tcs["60degree_Vbit"].Tool.TipDiameter = tip
-        self.pocket_clr, self.vc = op_clearance.create_pair(job)
-        self.vc.BaseShapes = list(job.Model.Group)
-        t = tcs["60degree_Vbit"].Tool
-        self.vbit = VBit(t.Diameter.Value, t.CuttingEdgeAngle.Value, t.TipDiameter.Value)
-        self.P, self.G, self.S = inlay_defaults(self.vbit)
-        self.start = self.P - self.G
-        self.t = math.tan(self.vbit.half_angle)
-        self.vc.FlatDepth = self.P
-        self.pjob = Path.Main.Job.Create("Plug", [sk], None)
-        for tc in list(self.pjob.Tools.Group):
-            self.doc.removeObject(tc.Name)
-        self.pjob.Stock.ExtZpos = 0
-        self.pjob.Stock.ExtZneg = 10
-        for k, v in (stock or {}).items():
-            setattr(self.pjob.Stock, k, v)
-        self.doc.recompute()  # ops take their stock heights when created
-        self.vtc, self.etc = (Path.Tool.Controller.Create(b, tool=_tool(self.doc, b))
-                              for b in ("60degree_Vbit", "5mm_Endmill"))
-        for tc in (self.vtc, self.etc):
-            self.pjob.Proxy.addToolController(tc)
-        if tip is not None:
-            self.vtc.Tool.TipDiameter = tip
-        self.clr = op_clearance.Create("VCarveClearance", parentJob=self.pjob, tc=self.etc)
-        self.plug = op_plug.Create("VCarvePlug", parentJob=self.pjob)
-        self.plug.ToolController = self.vtc
-        self.plug.PocketOp = self.vc
-        self.clr.VCarveOp = self.plug
-        if "StepDown" in props:
-            self.plug.setExpression("StepDown", None)
-        for k, v in props.items():
-            setattr(self.plug, k, v)
-        self.doc.recompute()
+        self.__dict__.update(vars(make_inlay(self.doc, loops, circles, tip, stock=stock, **props)))
         return self.plug
 
     def recompute(self, **props):
@@ -203,7 +162,7 @@ class PlugTests(unittest.TestCase):
 
     def test_narrow_gap_warning(self):
         """Letters 0.3 mm apart: a 1 mm tip leaves the plug's groove between them uncut."""
-        self.inlay(loops=(RECT, THIN_BAR, *LETTERS), tip=1)
+        self.inlay(loops=(RECT, THIN, *LETTERS), tip=1)
         self.assertTrue(self.logged(self.warn, self.plug.Label, "narrower than the V-bit tip"),
                         self.warn.call_args_list)
         self.warn.reset_mock()
@@ -214,13 +173,13 @@ class PlugTests(unittest.TestCase):
     def test_no_narrow_gap_warning_for_corners(self):
         # The inner corner of the L puts the complement's medial axis at r < r_t; a thin bar is no gap
         ell = [(0, 0), (30, 0), (30, 8), (8, 8), (8, 30), (0, 30)]
-        self.inlay(loops=(ell, [(x + 40, y) for x, y in THIN_BAR]), circles=(), tip=1)
+        self.inlay(loops=(ell, [(x + 40, y) for x, y in THIN]), circles=(), tip=1)
         self.assertFalse(self.logged(self.warn, "narrower"), self.warn.call_args_list)
 
     def test_medial_axis_in_complement(self):
         # FreeCAD 26.3 discretized two short parabolic Voronoi edges 43 mm off, inside the mirrored
         # design: the plug's V-bit cut into the bar's wall by 1.25 mm
-        self.inlay(loops=(RECT, BAR3, *LETTERS, THIN_BAR), tip=1)
+        self.inlay(loops=LOOPS, tip=1)
         (_, complement), = self.plug.Proxy.regions(self.plug)
         for face in complement:
             for xy in medial_polylines(face, boundary_segments(face, self.plug.Discretize), self.plug.Colinear,
