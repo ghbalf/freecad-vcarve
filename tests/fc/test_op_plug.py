@@ -164,9 +164,14 @@ class PlugTests(unittest.TestCase):
 
     def test_different_vbit(self):
         self.inlay()
-        self.vtc.Tool.TipDiameter = self.vbit.tip_diameter + 0.5
-        self.doc.recompute()
-        self.assert_error()
+        for prop, value in (("TipDiameter", self.vbit.tip_diameter + 0.5), ("Diameter", self.vbit.diameter + 2)):
+            self.vtc.Tool.TipDiameter = self.vbit.tip_diameter
+            self.vtc.Tool.Diameter = self.vbit.diameter
+            setattr(self.vtc.Tool, prop, value)
+            self.err.reset_mock()
+            self.doc.recompute()
+            self.assert_error()
+            self.assertTrue(self.logged(self.err, "differs", self.vc.Label), (prop, self.err.call_args_list))
 
     def test_glue_gap_range(self):
         self.inlay()
@@ -180,6 +185,7 @@ class PlugTests(unittest.TestCase):
         self.inlay()
         self.recompute(SurfaceGap=self.vbit.cone_height)
         self.assert_error()
+        self.assertTrue(self.logged(self.err, "cone height", f"by {self.start:.2f} mm"), self.err.call_args_list)
 
     def test_not_a_pocket_op(self):
         self.inlay()
@@ -190,6 +196,27 @@ class PlugTests(unittest.TestCase):
         self.inlay(stock={"ExtZneg": 1})
         self.assertTrue(self.logged(self.warn, self.plug.Label, "thinner"), self.warn.call_args_list)
         self.assertTrue(len(cut_points(self.plug)))
+
+    def test_stock_edit_recomputes(self):
+        """The user sets the real plug thickness after creating the ops."""
+        self.inlay()
+        self.assertFalse(self.logged(self.warn, "thinner"))
+        self.pjob.Stock.ExtZneg = 0.5  # thinner than P - G + S
+        self.doc.recompute()
+        self.assertTrue(self.logged(self.warn, self.plug.Label, "thinner"), self.warn.call_args_list)
+
+    def test_stock_not_covering_design(self):
+        self.inlay(PlugBoundary="Stock", stock={f"Ext{a}{s}": 10 for a in "XY" for s in ("neg", "pos")})
+        self.assertFalse(self.logged(self.warn, "cover"))
+        self.pjob.Stock.ExtXneg = -20  # shrink the stock into the design after creation
+        self.doc.recompute()
+        self.assertTrue(self.logged(self.warn, self.plug.Label, "cover"), self.warn.call_args_list)
+
+    def test_plug_start_depth_kept_on_error(self):
+        self.inlay()
+        self.assertAlmostEqual(self.plug.PlugStartDepth.Value, self.start, places=6)
+        self.recompute(GlueGap=self.P + 0.5)
+        self.assertAlmostEqual(self.plug.PlugStartDepth.Value, self.start, places=6)
 
     def test_no_check_log_on_depth_update(self):
         self.inlay(GlueGap=0)

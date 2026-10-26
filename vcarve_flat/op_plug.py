@@ -161,16 +161,30 @@ class ObjectVCarvePlug(op_vcarve.ObjectVCarveFlat):
                         "Plug Start Depth: pocket depth - Glue Gap, below the plug board's top (derived)")
         self.opOnDocumentRestored(obj)
 
+    def _link_stock(self, obj):
+        """PlugStock links the Job's stock, so editing the stock recomputes the plug."""
+        if not hasattr(obj, "PlugStock"):
+            obj.addProperty("App::PropertyLink", "PlugStock", _GROUP, "The plug Job's stock (internal)")
+            obj.setEditorMode("PlugStock", 2)
+        job = PathUtils.findParentJob(obj)
+        if job and job.Stock and obj.PlugStock != job.Stock:
+            obj.PlugStock = job.Stock
+
     def opOnDocumentRestored(self, obj):
         super().opOnDocumentRestored(obj)
         if hasattr(obj, "PlugStartDepth"):  # run by the base initOperation before it exists
             obj.setEditorMode("FlatDepth", 2)  # unused: the plug's depths come from the pocket op
             obj.setEditorMode("PlugStartDepth", 1)
+            self._link_stock(obj)
+
+    def opSetDefaultValues(self, obj, job):
+        super().opSetDefaultValues(obj, job)
+        self._link_stock(obj)
 
     def opUpdateDepths(self, obj):
         super().opUpdateDepths(obj)
-        _, _, start = self._checks(obj)
-        if start is not None and abs(obj.PlugStartDepth.Value - start) > 1e-9:
+        errors, _, start = self._checks(obj)
+        if not errors and abs(obj.PlugStartDepth.Value - start) > 1e-9:
             obj.PlugStartDepth = start
 
     def opRejectAddBase(self, obj, base, sub):
