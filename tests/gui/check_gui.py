@@ -40,6 +40,12 @@ def main():
     home = os.path.realpath(os.environ["FREECAD_USER_HOME"])
     data = os.path.realpath(App.getUserAppDataDir())
     assert data.startswith(home), f"FREECAD_USER_HOME not honored: user data dir is {data}"
+    # A warning shown as a notification popup deadlocks FreeCAD 1.0 offscreen (see tests/test_gui.py).
+    Gui.getMainWindow().activateWindow()
+    App.Console.PrintWarning("GUI check: notification probe\n")
+    loop = QtCore.QEventLoop()  # past the notification area's 250 ms delay
+    QtCore.QTimer.singleShot(1000, loop.quit)
+    loop.exec_()
 
     Gui.activateWorkbench("CAMWorkbench")
     QtGui.QApplication.processEvents()
