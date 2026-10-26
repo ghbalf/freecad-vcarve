@@ -163,12 +163,13 @@ def _first_tc(job, shape, message):
     return tc
 
 
-def create_pair(job):
-    """Create (clearance op, V-carve op) in job, clearance first, linked. Adds no bases."""
-    vtc = _first_tc(job, "VBit", "Add a V-bit tool controller to the job")
-    etc = _first_tc(job, "Endmill", "Add an end mill tool controller to the job")
+def create_pair(job, vtc=None, etc=None, vcarve_create=op_vcarve.Create):
+    """Create (clearance op, V-carve op) in job, clearance first, linked. Adds no bases.
+    vtc and etc default to the job's first V-bit and end mill controllers."""
+    vtc = vtc or _first_tc(job, "VBit", "Add a V-bit tool controller to the job")
+    etc = etc or _first_tc(job, "Endmill", "Add an end mill tool controller to the job")
     clearance = Create("VCarveClearance", parentJob=job, tc=etc)
-    vcarve = op_vcarve.Create("VCarveFlat", parentJob=job)
+    vcarve = vcarve_create("VCarveFlat", parentJob=job)
     vcarve.ToolController = vtc
     clearance.VCarveOp = vcarve
     clearance.Proxy.opUpdateDepths(clearance)
