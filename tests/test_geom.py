@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from vcarve_flat.geom import (
-    VBit, depth_for_radius, distances_to_segments, drop_collinear, drop_floor_runs, flat_radius, inlay_defaults, insert_crossings, limit_depth, order_paths,
+    VBit, depth_for_radius, distances_to_segments, drop_collinear, drop_floor_runs, flat_radius, inlay_defaults, insert_crossings, narrow_points, limit_depth, order_paths,
     pass_depths, plug_errors, rest_stepover, simplify,
 )
 
@@ -151,3 +151,25 @@ def test_insert_crossings():
     np.testing.assert_allclose(out[:, 0], [-2, -1.2, -1, 0, 1, 1.2, 2, 3, 4], atol=1e-9)
     np.testing.assert_allclose(r, np.abs(out[:, 0]), atol=1e-9)
     np.testing.assert_array_equal(insert_crossings(xy, np.abs(xy[:, 0]), None, [5.0])[0], xy)
+
+
+def _loop_segments(pts):
+    pts = np.asarray(pts, float)
+    return np.stack([pts, np.roll(pts, -1, axis=0)], axis=1)
+
+
+def test_narrow_points_gap_not_corners():
+    strip = _loop_segments([(0, 0), (10, 0), (10, 0.3), (0, 0.3)])
+    mid = np.column_stack([np.linspace(1, 9, 9), np.full(9, 0.15)])
+    assert narrow_points(mid, strip, 0.5).all()
+    assert not narrow_points(mid, strip, 0.1).any()  # 0.3 wide: not narrower than 0.2
+    ends = np.array([(0.1, 0.1), (0.05, 0.05), (9.9, 0.2)])  # on the strip's corner bisectors
+    assert not narrow_points(ends, strip, 0.5).any()
+
+
+def test_narrow_points_sharp_and_square_corners():
+    square = _loop_segments([(0, 0), (10, 0), (10, 10), (0, 10)])
+    assert not narrow_points(np.array([(0.3, 0.3), (9.8, 9.8)]), square, 0.5).any()
+    h = math.tan(math.radians(10))  # a 20 degree wedge with its tip at the origin
+    wedge = _loop_segments([(0, 0), (10, -10 * h), (10, 10 * h)])
+    assert not narrow_points(np.array([(1.0, 0), (2.0, 0)]), wedge, 0.5).any()

@@ -17,6 +17,8 @@ from vcarve_flat.clearing import area_offset
 from vcarve_flat.geom import VBit, flat_radius, inlay_defaults, pass_depths
 
 BAR = [(0, 0), (30, 0), (30, 2), (0, 2)]
+THIN_BAR = [(58, 22), (80, 22), (80, 22.8), (58, 22.8)]
+LETTERS = [[(34, 24), (44, 24), (44, 34), (34, 34)], [(44.3, 24), (54.3, 24), (54.3, 34), (44.3, 34)]]
 
 
 class PlugTests(unittest.TestCase):
@@ -196,6 +198,22 @@ class PlugTests(unittest.TestCase):
         self.inlay(stock={"ExtZneg": 1})
         self.assertTrue(self.logged(self.warn, self.plug.Label, "thinner"), self.warn.call_args_list)
         self.assertTrue(len(cut_points(self.plug)))
+
+    def test_narrow_gap_warning(self):
+        """Letters 0.3 mm apart: a 1 mm tip leaves the plug's groove between them uncut."""
+        self.inlay(loops=(RECT, THIN_BAR, *LETTERS), tip=1)
+        self.assertTrue(self.logged(self.warn, self.plug.Label, "narrower than the V-bit tip"),
+                        self.warn.call_args_list)
+        self.warn.reset_mock()
+        self.vtc.Tool.TipDiameter = 0
+        self.doc.recompute()
+        self.assertFalse(self.logged(self.warn, "narrower"), self.warn.call_args_list)
+
+    def test_no_narrow_gap_warning_for_corners(self):
+        # The inner corner of the L puts the complement's medial axis at r < r_t; a thin bar is no gap
+        ell = [(0, 0), (30, 0), (30, 8), (8, 8), (8, 30), (0, 30)]
+        self.inlay(loops=(ell, [(x + 40, y) for x, y in THIN_BAR]), circles=(), tip=1)
+        self.assertFalse(self.logged(self.warn, "narrower"), self.warn.call_args_list)
 
     def test_stock_edit_recomputes(self):
         """The user sets the real plug thickness after creating the ops."""

@@ -10,7 +10,7 @@ from Path.Op.Vcarve import (BORDERLINE, COLINEAR, EXTERIOR1, EXTERIOR2, PRIMARY,
 
 from .clearing import offset_faces
 from .geom import (depth_for_radius, distances_to_segments, drop_collinear, drop_floor_runs, flat_radius,
-                   insert_crossings, simplify)
+                   insert_crossings, narrow_points, simplify)
 
 
 def _closed_loop(wire, deflection) -> np.ndarray:
@@ -100,6 +100,13 @@ def ridge_polylines(face, vbit, z_base, height, *, deflection, colinear_deg, ste
         path = np.column_stack([xy, -(z_base + up)])
         paths += [p * [1, 1, -1] for p in drop_floor_runs(path, -(z_base + height))]
     return [simplify(p, tol) for p in paths]
+
+
+def has_narrow_gap(face, radius, *, deflection, colinear_deg, step) -> bool:
+    """Whether face is narrower than 2*radius somewhere other than in its corners."""
+    segments = boundary_segments(face, deflection)
+    return any(narrow_points(xy, segments, radius).any()
+               for xy in medial_polylines(face, segments, colinear_deg, step))
 
 
 def flat_boundary_loops(face, vbit, z_top, depth_limit, *, deflection, tol) -> list:

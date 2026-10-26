@@ -110,6 +110,36 @@ def insert_crossings(xy: np.ndarray, r: np.ndarray, radius, levels) -> tuple:
     return np.vstack([xy, a + u[:, None] * ab])[order], np.r_[r, level][order]
 
 
+def narrow_points(xy: np.ndarray, segments: np.ndarray, radius: float) -> np.ndarray:
+    """Mask of the medial-axis points xy that lie in a gap narrower than 2*radius. A point on the
+    bisector of a corner is not in a gap: the boundary tangents at its two footpoints meet at the
+    corner, on the boundary. Across a gap they are parallel or meet away from it."""
+    xy, segments = np.asarray(xy, float), np.asarray(segments, float)
+    out = np.zeros(len(xy), bool)
+    if not len(segments):
+        return out
+    a, ab = segments[:, 0], segments[:, 1] - segments[:, 0]
+    len2 = np.einsum("mi,mi->m", ab, ab)
+    inv = np.divide(1.0, len2, out=np.zeros_like(len2), where=len2 > 0)
+    r = distances_to_segments(xy, segments)
+    for i in np.nonzero(r < radius)[0]:
+        foot = a + np.clip(np.einsum("mi,mi->m", xy[i] - a, ab) * inv, 0, 1)[:, None] * ab
+        dist = np.hypot(*(foot - xy[i]).T)
+        near = foot[dist <= r[i] * (1 + 1e-3) + 1e-6]
+        f1 = foot[dist.argmin()]
+        f2 = near[np.hypot(*(near - f1).T).argmax()]
+        if np.hypot(*(f2 - f1)) < 1e-9:
+            continue  # one footpoint: the axis ends on the boundary
+        n = np.array([xy[i] - f1, xy[i] - f2])
+        det = n[0, 0] * n[1, 1] - n[0, 1] * n[1, 0]
+        if abs(det) < 1e-9 * r[i] ** 2:
+            out[i] = True  # parallel walls
+            continue
+        corner = np.linalg.solve(n, np.einsum("ij,ij->i", n, [f1, f2]))
+        out[i] = distances_to_segments(corner[None], segments)[0] > r[i]
+    return out
+
+
 def drop_collinear(loop: np.ndarray, eps: float) -> np.ndarray:
     """Closed 2D loop (last point not repeated) without points closer than eps to the chord of their
     neighbours. Collinear boundary points give Path.Voronoi degenerate parabolic edges."""

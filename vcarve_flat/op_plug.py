@@ -15,7 +15,7 @@ import PathScripts.PathUtils as PathUtils
 from . import op_vcarve
 from .clearing import area_offset, inside_loops, intersect, mirror_faces, subtract, union
 from .geom import flat_radius, pass_depths, plug_errors
-from .medial import face_loops, ridge_polylines
+from .medial import face_loops, has_narrow_gap, ridge_polylines
 from .sketches import SketchError
 
 _GROUP = "V-Carve Plug"
@@ -191,7 +191,7 @@ class ObjectVCarvePlug(op_vcarve.ObjectVCarveFlat):
         return True
 
     def opExecute(self, obj):
-        errors, _, start = self._checks(obj)
+        errors, vbit, start = self._checks(obj)
         for error in errors:
             Path.Log.error(error)
         if errors:
@@ -208,6 +208,13 @@ class ObjectVCarvePlug(op_vcarve.ObjectVCarveFlat):
                     or bb.XMax > stock.XMax + 1e-6 or bb.YMax > stock.YMax + 1e-6:
                 Path.Log.warning(f"{obj.Label}: the plug Job's stock does not cover the mirrored design")
         super().opExecute(obj)
+        complement = self._last[0] if self._last else []
+        if vbit.tip_radius > 0 and any(
+                has_narrow_gap(f, vbit.tip_radius, deflection=obj.Discretize, colinear_deg=obj.Colinear,
+                               step=obj.StepLength.Value) for f in complement):
+            Path.Log.warning(f"{obj.Label}: the design has gaps narrower than the V-bit tip "
+                             f"({vbit.tip_diameter:g} mm); the plug will not seat there. Use a pointed "
+                             "V-bit or widen the gaps")
 
 
 def SetupProperties():
