@@ -46,7 +46,9 @@ reported too; set a flat depth to clear them.
 
 **Sharp corners.** The V-bit's wall pass around a flat floor runs into each inner corner of the
 floor outline instead of circling it, so the cone leaves the wood's corner sharp down to the floor
-(the plug's letter corners too). The floor's own corners keep only the V-bit's tip radius.
+(the plug's letter corners too). The floor's own corners keep only the V-bit's tip radius. Such a
+corner leaves a sharp ridge in the pocket, so the plug op cuts the matching valley: a straight pass
+down the bisector of each of the design's inner corners.
 
 **Clearance.** The clearance op's `VCarveOp` property links it to the V-carve op (Pair does this
 for you); it cuts the floor with the end mill, using `PocketPattern`, `StepOver` and `Allowance`.
@@ -103,9 +105,9 @@ that material off. The plug op must use the same V-bit as the pocket op, and P �
 the V-bit's cone height.
 
 **Z and stock.** Zero Z on the real top of the plug wood, carefully: an error of e makes the letters
-e taller. Set the plug Job's stock to the real wood thickness, at least P − G + S plus a safe base. On
-a fresh inlay the plug op warns that the plug stock is thinner than P − G + S. That is expected until
-you set the stock. In *Stock* mode the end mill clears the floor out to the stock edge, so the stock must extend past the plug's outline (the mirrored design grown by the V-bit's flat radius) by at least the end mill diameter. FreeCAD's default 1 mm stock margins are narrower, so the end mill cannot cut the strip: the clearance op logs "no floor reachable by the end mill" (a warning) and the plug op warns that the stock margin is narrower than the end mill, with the advice to set the plug Job's stock to the real board size. The V-bit rest pass then clears the strip and, as its path is not clipped to the stock, runs out to the stock edge and a little past it, through air.
+e taller. The plug Job's stock starts as thick as your Job's stock, or 1 mm deeper than
+the plug's floor (P − G + S) if that board is too thin; set it to the real plug wood afterwards. The plug
+op warns when the stock is thinner than P − G + S. In *Stock* mode the end mill clears the floor out to the stock edge, so the stock must extend past the plug's outline (the mirrored design grown by the V-bit's flat radius) by at least the end mill diameter. FreeCAD's default 1 mm stock margins are narrower, so the end mill cannot cut the strip: the clearance op logs "no floor reachable by the end mill" (a warning) and the plug op warns that the stock margin is narrower than the end mill, with the advice to set the plug Job's stock to the real board size. The V-bit rest pass then clears the strip and, as its path is not clipped to the stock, runs out to the stock edge and a little past it, through air.
 
 **Model view.** The plug Job's model shows the unmirrored design; the op mirrors it (about `MirrorAxis`)
 when it makes the path.
@@ -118,7 +120,7 @@ Plug operation (group "V-Carve Plug"):
 | `GlueGap` | 0.2 mm | Gap between plug top and pocket floor when seated |
 | `SurfaceGap` | set by the command: min(1.5 mm, cone height − (P − G)) | Gap between plug board and board surface when seated (the plug's flat depth S) |
 | `RidgePass` | on | Flatten the plug's narrow ridges for a tipped V-bit |
-| `PlugMargin` | 10 mm | Margin mode: width of the flat ring cleared around the plug; its width beyond the V-bit tip radius must be at least the end mill diameter |
+| `PlugMargin` | 10 mm | Margin mode: width of the flat ring cleared around the plug (counters are cleared whole, however wide); its width beyond the V-bit tip radius must be at least the end mill diameter |
 | `PlugBoundary` | Margin | Margin: a ring around the plug; Stock: the whole stock of the plug Job |
 | `MirrorAxis` | X | X flips left-right, Y flips front-back, about the design's bounding-box centre |
 | `PlugStartDepth` | read-only | P − G |

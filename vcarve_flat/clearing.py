@@ -58,29 +58,34 @@ def _occ_offset(face, distance: float) -> list:
     return per_wire
 
 
-def _corner_caps(faces, distance: float) -> list:
-    """At each corner of faces whose outside is a sector under 180 degrees, the kite between the
-    arc an inward offset by distance draws around it and the point where the offset edges meet."""
-    caps = []
+def inner_corners(faces):
+    """(vertex, unit tangents pointing away from it along its two edges) at each corner of faces
+    whose outside is a sector under 180 degrees."""
     for face in faces:
         for v in face.Vertexes:
             edges = face.ancestorsOfType(v, Part.Edge)
             if len(edges) != 2:
                 continue
-            u = []  # unit tangents pointing away from the corner
+            u = []
             for e in edges:
                 p = e.parameterAt(v)
                 t = e.tangentAt(p).normalize()
                 u.append(-t if abs(p - e.LastParameter) < abs(p - e.FirstParameter) else t)
-            cos = u[0].dot(u[1])
-            if cos < -0.9998:
+            if u[0].dot(u[1]) < -0.9998:
                 continue  # straight on
-            c, m = v.Point, (u[0] + u[1]).normalize()  # bisector
-            if face.isInside(c + m * 1e-3, 1e-9, True):
-                continue  # the face's own corner
-            n0, n1 = ((b - a * cos).normalize() for a, b in (u, u[::-1]))
-            apex = c - m * (distance / math.sqrt((1 - cos) / 2))
-            caps.append(Part.Face(Part.makePolygon([c, c - n0 * distance, apex, c - n1 * distance, c])))
+            if not face.isInside(v.Point + (u[0] + u[1]).normalize() * 1e-3, 1e-9, True):
+                yield v.Point, u
+
+
+def _corner_caps(faces, distance: float) -> list:
+    """At each inner corner of faces, the kite between the arc an inward offset by distance draws
+    around it and the point where the offset edges meet."""
+    caps = []
+    for c, u in inner_corners(faces):
+        cos, m = u[0].dot(u[1]), (u[0] + u[1]).normalize()  # m: bisector
+        n0, n1 = ((b - a * cos).normalize() for a, b in (u, u[::-1]))
+        apex = c - m * (distance / math.sqrt((1 - cos) / 2))
+        caps.append(Part.Face(Part.makePolygon([c, c - n0 * distance, apex, c - n1 * distance, c])))
     return caps
 
 

@@ -9,7 +9,7 @@ import numpy as np
 import Path
 
 from fit import cut_height, make_inlay, seated
-from test_op_vcarve import RECT, RING
+from test_op_vcarve import L_SHAPE, RECT, RING
 
 BAR3 = [(0, 24), (30, 24), (30, 27), (0, 27)]
 LETTERS = [[(34, 24), (44, 24), (44, 34), (34, 34)], [(44.3, 24), (54.3, 24), (54.3, 34), (44.3, 34)]]
@@ -132,6 +132,25 @@ class FitTests(unittest.TestCase):
 
     def test_fit_stepdown(self):
         self.assert_fit(self.fit(tip=0, stepdown=1))
+
+    def test_fit_inner_corner(self):
+        """The plug's walls above Z_v keep the letter's inner corner sharp, like the pocket's."""
+        n = make_inlay(self.doc, [L_SHAPE], tip=0)
+        self.assertFalse(self.err.called, self.err.call_args_list)
+        x, y = np.meshgrid(np.arange(6, 14, 0.1), np.arange(6, 14, 0.1))
+        pts = np.column_stack([x.ravel(), y.ravel()])
+        gap = seated(n, pts, (20, 15)).gap
+        self.assertGreater(gap.min(), -TOL, pts[gap.argmin()])
+
+    def test_fit_wide_counter(self):
+        """A counter wider than the plug's margin ring is cleared all over, not left as waste."""
+        n = make_inlay(self.doc, [RECT], [(70, 10, 15), (70, 10, 13)], tip=0)  # PlugMargin 10
+        self.assertFalse(self.err.called, self.err.call_args_list)
+        x, y = np.meshgrid(np.arange(57.5, 82.5, 0.5), np.arange(-2.5, 22.5, 0.5))
+        pts = np.column_stack([x.ravel(), y.ravel()])
+        pts = pts[np.hypot(pts[:, 0] - 70, pts[:, 1] - 10) < 12.5]
+        gap = seated(n, pts, (42.5, 10)).gap  # the design bbox x 0..85
+        self.assertGreater(gap.min(), -TOL, pts[gap.argmin()])
 
 
 if __name__ == "__main__":
