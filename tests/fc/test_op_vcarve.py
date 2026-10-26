@@ -14,6 +14,7 @@ from vcarve_flat.toolpath import paths_to_commands
 
 RECT = [(0, 0), (40, 0), (40, 20), (0, 20)]
 RING = [(70, 10, 10), (70, 10, 4)]
+L_SHAPE = [(0, 0), (40, 0), (40, 10), (10, 10), (10, 30), (0, 30)]
 
 
 def cut_points(op):
@@ -174,6 +175,25 @@ class OpVCarveTests(unittest.TestCase):
         a, b = cut_points(whole), cut_points(edge)
         np.testing.assert_allclose(a.min(axis=0), b.min(axis=0), atol=0.01)
         np.testing.assert_allclose(a.max(axis=0), b.max(axis=0), atol=0.01)
+
+    def test_sharp_inner_corner(self):
+        # L with an inner corner at (10, 10): the wood kept is x > 10, y > 10, and at depth h its
+        # edge lies h*t further out with a sharp corner, so no cone and no floor may reach into it
+        (clone,) = self.job_with(make_sketch(self.doc, "L", [L_SHAPE]))
+        op = self.make_op([clone], FlatDepth=3.0)
+        t = np.tan(self.vbit.half_angle)
+        pts = cut_points(op)
+        for h in (0.5, 1.5, 2.5):
+            q = 10 - h * t
+            below = pts[pts[:, 2] < -h]
+            radius = self.vbit.tip_radius + (-h - below[:, 2]) * t
+            dist = np.hypot(np.maximum(q - below[:, 0], 0), np.maximum(q - below[:, 1], 0))
+            self.assertTrue(np.all(dist >= radius - 0.01), (h, (radius - dist).max()))
+        cs = op.Proxy.levels(op)[-1]
+        (faces,) = [fs for _, fs in op.Proxy.regions(op)]
+        r = 10 - cs.r_flat * 0.9  # just inside the round corner the floor had
+        self.assertFalse(any(f.isInside(App.Vector(r, r, f.BoundBox.ZMin), 1e-6, True)
+                             for f in op.Proxy.floor(op, cs, faces)))
 
     def test_sharp_bit_flat(self):
         (clone,) = self.job_with(make_sketch(self.doc, "Rect", [RECT]))

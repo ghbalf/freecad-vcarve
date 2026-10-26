@@ -118,10 +118,10 @@ class ObjectVCarvePlug(op_vcarve.ObjectVCarveFlat):
                 for s in pass_depths(start + obj.SurfaceGap.Value, obj.StepDown.Value)]
 
     def floor(self, obj, cs, faces) -> list:
-        return intersect(area_offset(faces, -cs.r_flat), self._limit(obj, faces))
+        return intersect(area_offset(faces, -cs.r_flat, sharp=True), self._limit(obj, faces))
 
     def wall_loops(self, obj, cs, face) -> list:
-        loops = face_loops(area_offset([face], -cs.r_flat), cs.z_top - cs.depth,
+        loops = face_loops(area_offset([face], -cs.r_flat, sharp=True), cs.z_top - cs.depth,
                            deflection=obj.Discretize, tol=obj.Tolerance.Value)
         return inside_loops(loops, self._limit(obj, [face]))
 

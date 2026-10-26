@@ -182,7 +182,7 @@ class ObjectVCarveFlat(PathOp.ObjectOp):
 
     def floor(self, obj, cs, faces) -> list:
         """The V-bit tool-centre floor of level cs."""
-        return offset_faces(faces, -cs.r_flat)
+        return offset_faces(faces, -cs.r_flat, sharp=True)
 
     def wall_loops(self, obj, cs, face) -> list:
         return flat_boundary_loops(face, cs.vbit, cs.z_top, cs.depth, deflection=obj.Discretize,

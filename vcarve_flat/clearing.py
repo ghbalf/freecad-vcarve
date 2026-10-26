@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 """Face offset / subtract helpers and Path.Area pocketing for the clearing passes."""
+import math
+
 import FreeCAD as App
 import numpy as np
 import Part
@@ -56,15 +58,47 @@ def _occ_offset(face, distance: float) -> list:
     return per_wire
 
 
-def offset_faces(faces, distance: float) -> list:
+def _corner_caps(faces, distance: float) -> list:
+    """At each corner of faces whose outside is a sector under 180 degrees, the kite between the
+    arc an inward offset by distance draws around it and the point where the offset edges meet."""
+    caps = []
+    for face in faces:
+        for v in face.Vertexes:
+            edges = face.ancestorsOfType(v, Part.Edge)
+            if len(edges) != 2:
+                continue
+            u = []  # unit tangents pointing away from the corner
+            for e in edges:
+                p = e.parameterAt(v)
+                t = e.tangentAt(p).normalize()
+                u.append(-t if abs(p - e.LastParameter) < abs(p - e.FirstParameter) else t)
+            cos = u[0].dot(u[1])
+            if cos < -0.9998:
+                continue  # straight on
+            c, m = v.Point, (u[0] + u[1]).normalize()  # bisector
+            if face.isInside(c + m * 1e-3, 1e-9, True):
+                continue  # the face's own corner
+            n0, n1 = ((b - a * cos).normalize() for a, b in (u, u[::-1]))
+            apex = c - m * (distance / math.sqrt((1 - cos) / 2))
+            caps.append(Part.Face(Part.makePolygon([c, c - n0 * distance, apex, c - n1 * distance, c])))
+    return caps
+
+
+def offset_faces(faces, distance: float, sharp: bool = False) -> list:
     """Offset faces by distance (positive outward); a feature that vanishes (too narrow) yields no
-    face. OCC's makeOffset2D keeps arcs exact (see _occ_offset for its faults) but fails on some
+    face. sharp (inward only) cuts the arcs at the inner corners back to where the offset edges
+    meet: a V-bit following that contour leaves the wood's corner sharp, where the arc's cone would
+    round it. OCC's intersection join fails on tangent arcs and 26.3's Path.Area has no miter. OCC's makeOffset2D keeps arcs exact (see _occ_offset for its faults) but fails on some
     faces ("Wire is not closed"); Path.Area gets those right but re-fits arcs up to 0.02 mm off.
     So the OCC result is used when it agrees with Path.Area (same face count, area within 0.05 mm
     times the input perimeter), else the Path.Area one. When both fail the OCC error propagates,
     so the caller reports it with the sketch's name."""
     if not faces or distance == 0:
         return list(faces)
+    if sharp and distance < 0:
+        rounded = offset_faces(faces, distance)
+        caps = _corner_caps(faces, -distance) if rounded else []
+        return subtract(rounded, caps) if caps else rounded
     occ, occ_error = [], None
     for face in faces:
         try:

@@ -123,7 +123,7 @@ def has_narrow_gap(face, radius, *, deflection, colinear_deg, step) -> bool:
 
 def flat_boundary_loops(face, vbit, z_top, depth_limit, *, deflection, tol) -> list:
     """Closed loops where the V-bit wall meets the flat floor (face offset inward by r_flat)."""
-    return face_loops(offset_faces([face], -flat_radius(vbit, depth_limit)), z_top - depth_limit,
+    return face_loops(offset_faces([face], -flat_radius(vbit, depth_limit), sharp=True), z_top - depth_limit,
                       deflection=deflection, tol=tol)
 
 

@@ -69,7 +69,8 @@ class ClearanceTests(unittest.TestCase):
         self.assertLess(n(with_c), n(without))
         pts = np.vstack(with_c)
         # The neck is too narrow for the end mill, so it still gets rest clearing; the lobes' interiors don't.
-        self.assertTrue(np.any((pts[:, 0] > 22) & (pts[:, 0] < 28)))
+        self.assertTrue(any(np.all(np.abs(p[:, 1] - 10) < 3) and p[:, 0].min() < 22 and p[:, 0].max() > 28
+                            for p in map(np.asarray, with_c)))  # a pass along the neck
         lobe_core = (np.abs(pts[:, 0] - 10) < 5) & (np.abs(pts[:, 1] - 10) < 5)
         self.assertFalse(lobe_core.any())
 

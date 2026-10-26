@@ -44,6 +44,10 @@ the V-bit carves as deep as its cone allows and no floor is made. A flat depth d
 V-bit cone allows is capped and a warning is logged. Areas wider than the bit at that depth are
 reported too; set a flat depth to clear them.
 
+**Sharp corners.** The V-bit's wall pass around a flat floor runs into each inner corner of the
+floor outline instead of circling it, so the cone leaves the wood's corner sharp down to the floor
+(the plug's letter corners too). The floor's own corners keep only the V-bit's tip radius.
+
 **Clearance.** The clearance op's `VCarveOp` property links it to the V-carve op (Pair does this
 for you); it cuts the floor with the end mill, using `PocketPattern`, `StepOver` and `Allowance`.
 Where the end mill cannot reach part of the floor (corners, narrow areas), the V-bit clears that
@@ -147,6 +151,8 @@ op (pocket or plug). On the pocket op, `FlatDepth` 0 means no flat floor at all:
 - With a wide V-bit tip (about 1 mm, e.g. the FreeCAD 1.0.x stock 60° bit), a non-zero
   `Allowance`, or star-like shapes, the V-bit rest pass can leave thin slivers of floor uncut in
   sharp corners (measured 0.07–0.3 mm).
+- In strokes narrower than the flat floor the V-bit follows the centre line, so their inner corners
+  keep the cone's rounding.
 - A clearance `StepOver` near 100 % leaves uncut ridges between passes, as with CAM Pocket.
 - After deleting a clearance op, recompute its V-carve op (select it and press Recompute) so the
   V-bit clears the whole floor again.

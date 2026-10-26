@@ -143,6 +143,12 @@ P is the pocket depth, G the glue gap, S the surface gap.
   a small corner gap: its half-width is r_t/cos h (1.41·r_t at a 90° corner),
   it reaches (r_t + start·t)/sin h from the corner, and its height on the
   bisector is 2·r_t·sin h/t. Those small gaps are accepted and documented.
+- **Sharp inner corners.** The floor outline and the V-bit's wall loops are
+  inward offsets with mitred corners where the wood's corner is convex
+  (the pocket's reflex corners, the plug's letter corners): the round join
+  made the cone round that corner down to the floor (radius about r_flat).
+  A mitred offset lies inside the round one, so it never gouges. Strokes
+  narrower than the floor, cut along the medial axis, stay rounded.
 - **The tool above `Z_v`.** v1 clamps the medial depth at 0 (the carve
   surface). On the plug the carve surface is below the stock top, so the
   plug's carve lets the depth go negative, down to the plug top
