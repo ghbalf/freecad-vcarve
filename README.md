@@ -27,6 +27,7 @@ dropdown, and in the CAM menu after Vcarve:
 - **V-Carve Flat**: the V-bit operation.
 - **V-Carve Clearance**: the end-mill operation that clears the flat floor.
 - **V-Carve Pair**: creates both, linked, in one step.
+- **V-Carve Inlay**: sets up a pocket and a matching plug, see below.
 
 Workflow:
 
@@ -74,6 +75,70 @@ Clearance operation (group "V-Carve"):
 | `StepOver` | 40 % | Stepover as a percentage of the tool diameter |
 | `Allowance` | 0 mm | Distance kept from the floor boundary |
 
+## V-carve inlay
+
+**V-Carve Inlay** makes a pocket in one board and a matching plug in another. Select one sketch in a
+Job that has a V-bit and an end mill tool controller and run the command. The dialog asks for:
+
+- **V-bit** and **End mill**: the tool controllers to use.
+- **Pocket depth** P and **Glue gap** G: the defaults fit the chosen V-bit.
+- **Plug boundary**: *Margin* (saw the plug free inside a ring) or *Stock* (clear the whole plug board,
+  which takes longer).
+- **Ridge pass**: on by default, see below.
+
+The command creates two Jobs:
+
+- **The pocket Job** (your Job) gets the usual V-Carve Pair with `FlatDepth` = P.
+- **The plug Job** "`<sketch> Plug`" is new. It has copies of the two tool controllers, a V-Carve Plug
+  op and its clearance op. The plug op carves the mirrored design as a raised plug.
+
+The plug is carved at depth P − G + S below the plug board's top (S is `SurfaceGap`; `PlugStartDepth`
+shows P − G). Seated, the plug's cut floor sits S above the pocket board's surface. Saw and plane
+that material off. The plug op must use the same V-bit as the pocket op, and P − G + S must not exceed
+the V-bit's cone height.
+
+**Z and stock.** Zero Z on the real top of the plug wood, carefully: an error of e makes the letters
+e taller. Set the plug Job's stock to the real wood thickness, at least P − G + S plus a safe base. On
+a fresh inlay the plug op warns that the plug stock is thinner than P − G + S. That is expected until
+you set the stock. In *Stock* mode with FreeCAD's default 1 mm stock margins, the strip between the
+boundary and the stock edge is narrower than the end mill, so the V-bit clears it.
+
+**Model view.** The plug Job's model shows the unmirrored design; the op mirrors it (about `MirrorAxis`)
+when it makes the path.
+
+Plug operation (group "V-Carve Plug"):
+
+| Property | Default | Meaning |
+|---|---|---|
+| `PocketOp` | set by the command | The pocket's V-Carve Flat op (sketches, P and V-bit come from it) |
+| `GlueGap` | 0.2 mm | Gap between plug top and pocket floor when seated |
+| `SurfaceGap` | 1.5 mm | Gap between plug board and board surface when seated (the plug's flat depth S) |
+| `RidgePass` | on | Flatten the plug's narrow ridges for a tipped V-bit |
+| `PlugMargin` | 10 mm | Margin mode: width of the flat ring cleared around the plug, at least the end mill diameter |
+| `PlugBoundary` | Margin | Margin: a ring around the plug; Stock: the whole stock of the plug Job |
+| `MirrorAxis` | X | X flips left-right, Y flips front-back, about the design's bounding-box centre |
+| `PlugStartDepth` | read-only | P − G |
+
+**Narrow strokes.** Strokes narrower than 2·P·tan(half angle) have a V bottom in the pocket and no
+floor gap. The plug's ridge lands on it whatever G is. G protects only the wide, flat areas.
+
+**Tip and ridge pass.** A V-bit with a flat tip (radius r_t) cuts a narrow pocket groove with a flat
+bottom, but the plug's ridge for that stroke has a sharp apex. The apex would land on the flat bottom
+and lift the plug. The ridge pass (`RidgePass`) cuts each plug ridge flat where it is narrower than
+the tip. It runs once, after the plug's last level, and makes no path for a pointed bit. It leaves a
+small gap at convex corners. With t = tan(half angle), start = P − G and a corner whose bisector makes
+the half-angle h with the sides: the gap is r_t/cos h wide on each side (1.41·r_t at a 90 degree
+corner), reaches (r_t + start·t)/sin h from the corner, and is 2·r_t·sin h/t high on the bisector.
+These gaps are accepted. The plug op warns when the design has gaps narrower than the tip.
+
+**Rounded tips.** FreeCAD's V-bit only has a flat tip. For a rounded tip, enter as Tip Diameter the
+width where the rounding meets the cone. The real tip lies inside that model, so errors are gaps,
+never collisions. Zeroing Z on the bottom of the rounding makes the floor gap larger, never smaller.
+Pointed V-bits are best for inlays.
+
+**Step-down.** The command sets a 1.5 mm step-down. The clearance op follows the levels of its V-carve
+op (pocket or plug). With `FlatDepth` 0 and a step-down, no intermediate floors are cut.
+
 ## Known limitations
 
 - V-bit rest clearing leaves scallops up to `RestScallop`.
@@ -88,7 +153,6 @@ Clearance operation (group "V-Carve"):
 - Overlapping or touching outlines in one sketch (for example ShapeString letters that touch)
   are rejected with an error naming the sketch. Separate them, or put them in separate sketches.
 - A self-intersecting single loop (a figure-8) is not detected.
-- Inlay is not supported yet (planned for v2).
 - Input is 2D sketches only.
 
 ## Tests

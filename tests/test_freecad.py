@@ -30,4 +30,6 @@ def test_reopen_in_fresh_process(apprun, fc_env, tmp_path):
     outs = [subprocess.run([apprun, "freecadcmd", str(FC / script)], capture_output=True, text=True,
                            timeout=300, env=env, cwd=tmp_path).stdout for script in ("save_pair.py", "reopen_pair.py")]
     assert "SAVED" in outs[0], outs[0][-3000:]
-    assert "PROXIES ['ObjectVCarveClearance', 'ObjectVCarveFlat']" in outs[1], outs[1][-3000:]
+    assert ("PROXIES ['ObjectVCarveClearance', 'ObjectVCarveClearance', 'ObjectVCarveClearance', "
+            "'ObjectVCarveFlat', 'ObjectVCarveFlat', 'ObjectVCarvePlug']") in outs[1], outs[1][-3000:]
+    assert "PLUG-OK" in outs[1], outs[1][-3000:]

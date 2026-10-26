@@ -137,9 +137,11 @@ P is the pocket depth, G the glue gap, S the surface gap.
   axis of the mirrored letters at plug depth `start − (r − r_t)/t` below the
   plug top (r = medial radius), only where that depth is positive. This cuts
   each ridge flat where it is narrower than the tip, so it matches the pocket
-  groove. It runs once, after the plug's last level. It cuts away up to about
-  1.6·r_t at sharp outer corners. Those small gaps are accepted and
-  documented.
+  groove. It runs once, after the plug's last level. At a convex corner with
+  bisector half-angle h (t = tan of the V half-angle, start = P − G) it leaves
+  a small corner gap: its half-width is r_t/cos h (1.41·r_t at a 90° corner),
+  it reaches (r_t + start·t)/sin h from the corner, and its height on the
+  bisector is 2·r_t·sin h/t. Those small gaps are accepted and documented.
 - **The tool above `Z_v`.** v1 clamps the medial depth at 0 (the carve
   surface). On the plug the carve surface is below the stock top, so the
   plug's carve lets the depth go negative, down to the plug top
