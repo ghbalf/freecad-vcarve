@@ -118,7 +118,7 @@ P is the pocket depth, G the glue gap, S the surface gap.
   only changes S. On the plug side, a Z error e makes the letters e taller,
   so the README says to zero Z on the plug wood carefully.
 - **Narrow strokes have no floor gap (accepted, as in Vectric).** Strokes
-  narrower than 2·P·t have a V bottom in the pocket. The plug ridge's apex
+  narrower than 2·(r_t + P·t) have a V bottom (2·P·t for a pointed bit) in the pocket. The plug ridge's apex
   lands exactly on it when the walls close, whatever G is. G only protects
   the wide, flat-floor areas.
 - **The flat tip (corrected after review; ridge pass = user decision).** A

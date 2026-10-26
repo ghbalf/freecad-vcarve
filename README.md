@@ -101,7 +101,7 @@ the V-bit's cone height.
 e taller. Set the plug Job's stock to the real wood thickness, at least P − G + S plus a safe base. On
 a fresh inlay the plug op warns that the plug stock is thinner than P − G + S. That is expected until
 you set the stock. In *Stock* mode with FreeCAD's default 1 mm stock margins, the strip between the
-boundary and the stock edge is narrower than the end mill, so the V-bit clears it.
+boundary and the stock edge is narrower than the end mill. The clearance op then cuts nothing (it logs "no floor reachable by the end mill") and the V-bit rest pass clears the strip, running out to the stock edge and a little past it.
 
 **Model view.** The plug Job's model shows the unmirrored design; the op mirrors it (about `MirrorAxis`)
 when it makes the path.
@@ -112,14 +112,14 @@ Plug operation (group "V-Carve Plug"):
 |---|---|---|
 | `PocketOp` | set by the command | The pocket's V-Carve Flat op (sketches, P and V-bit come from it) |
 | `GlueGap` | 0.2 mm | Gap between plug top and pocket floor when seated |
-| `SurfaceGap` | 1.5 mm | Gap between plug board and board surface when seated (the plug's flat depth S) |
+| `SurfaceGap` | set by the command: min(1.5 mm, cone height − (P − G)) | Gap between plug board and board surface when seated (the plug's flat depth S) |
 | `RidgePass` | on | Flatten the plug's narrow ridges for a tipped V-bit |
 | `PlugMargin` | 10 mm | Margin mode: width of the flat ring cleared around the plug, at least the end mill diameter |
 | `PlugBoundary` | Margin | Margin: a ring around the plug; Stock: the whole stock of the plug Job |
 | `MirrorAxis` | X | X flips left-right, Y flips front-back, about the design's bounding-box centre |
 | `PlugStartDepth` | read-only | P − G |
 
-**Narrow strokes.** Strokes narrower than 2·P·tan(half angle) have a V bottom in the pocket and no
+**Narrow strokes.** Strokes narrower than 2·(r_t + P·tan(half angle)), with r_t the tip radius, have a V bottom in the pocket and no
 floor gap. The plug's ridge lands on it whatever G is. G protects only the wide, flat areas.
 
 **Tip and ridge pass.** A V-bit with a flat tip (radius r_t) cuts a narrow pocket groove with a flat
@@ -137,7 +137,7 @@ never collisions. Zeroing Z on the bottom of the rounding makes the floor gap la
 Pointed V-bits are best for inlays.
 
 **Step-down.** The command sets a 1.5 mm step-down. The clearance op follows the levels of its V-carve
-op (pocket or plug). With `FlatDepth` 0 and a step-down, no intermediate floors are cut.
+op (pocket or plug). On the pocket op, `FlatDepth` 0 means no flat floor at all: the clearance op cuts nothing, and the V-bit stops adding step-down levels once a level no longer cuts deeper. The plug op always has a flat floor (it hides `FlatDepth`), and it errors if its pocket op has `FlatDepth` 0.
 
 ## Known limitations
 

@@ -7,5 +7,6 @@ import FreeCAD as App
 doc = App.openDocument(os.environ["VCARVE_DOC"])
 print("PROXIES", sorted(type(o.Proxy).__name__ for o in doc.Objects if o.Name.startswith("VCarve")))
 plug = next(o for o in doc.Objects if o.Name.startswith("VCarve") and type(o.Proxy).__name__ == "ObjectVCarvePlug")
+plug.touch()
 doc.recompute()
 print("PLUG-OK" if plug.Path.Size > 0 else "PLUG-EMPTY")
