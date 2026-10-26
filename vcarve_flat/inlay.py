@@ -68,7 +68,7 @@ def create_inlay(job, sketch, vtc, etc, pocket_depth, glue_gap, boundary="Margin
     pocket = op_clearance.create_pair(qjob, *qtcs)
     pocket[1].BaseShapes = list(qjob.Model.Group)
     pocket[1].FlatDepth = pocket_depth
-    plug_pair = op_clearance.create_pair(pjob, *ptcs, vcarve_create=op_plug.Create)
+    plug_pair = op_clearance.create_pair(pjob, *ptcs, vcarve_create=op_plug.Create, name="VCarvePlug")
     clr, plug = plug_pair
     plug.PocketOp = pocket[1]
     plug.GlueGap = glue_gap

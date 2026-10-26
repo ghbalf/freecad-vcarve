@@ -59,6 +59,7 @@ class InlayTests(unittest.TestCase):
         self.assertEqual([o.Name for o in qjob.Operations.Group], [pclr.Name, pvc.Name])
         self.assertEqual([o.Name for o in pjob.Operations.Group], [clr.Name, plug.Name])
         self.assertEqual(clr.VCarveOp, plug)
+        self.assertTrue(plug.Name.startswith("VCarvePlug"), plug.Name)
         self.assertEqual(plug.PocketOp, pvc)
         self.assertEqual(pclr.VCarveOp, pvc)
         self.assertEqual(pvc.FlatDepth.Value, 3.0)
