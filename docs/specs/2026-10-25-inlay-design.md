@@ -29,7 +29,8 @@ yet, so nothing in the design may rely on it.
 ## Goals
 
 1. One command, **"V-Carve Inlay"**, turns a design sketch into a complete
-   inlay. It creates **two Jobs in the same document**:
+   inlay. It creates **two new Jobs in the same document** and leaves the
+   selected Job as it is (user decision, 2026-10-26):
    - **Pocket Job** (the board): a V-Carve Flat op with Flat Depth equal to
      the pocket depth, plus its V-Carve Clearance op. These are v1 ops.
    - **Plug Job** (the inlay wood): a V-carve plug op plus a clearance op. It
@@ -202,19 +203,22 @@ P is the pocket depth, G the glue gap, S the surface gap.
 
 ### The command
 
-1. The user selects the design sketch in a Job that has at least one V-bit and
-   one end-mill tool controller (as for v1's Pair). That Job becomes the
-   Pocket Job.
+1. The user selects the design sketch (or a Job's clone of it). The Job of the
+   selection (else the only Job, else FreeCAD's Job chooser) is the source
+   Job: it needs at least one V-bit and one end-mill tool controller, and it
+   is only read, never changed.
 2. A small dialog asks for the beginner settings: V-bit and end mill (from
    that Job's tool controllers), pocket depth, glue gap, and the plug
    boundary (Margin: "saw the plug free inside a ring"; Stock: "clear the
    whole plug board, takes longer"). It opens with
    defaults that fit the chosen V-bit (below), and an "Advanced: edit the op
    properties afterwards" hint.
-3. The command creates, in the Pocket Job, the v1 pair with Flat Depth P. It
-   creates a new Job "<sketch> Plug" with the same sketch as model, copies of
-   the two tool controllers, and the plug op plus its clearance op (clearance
-   first, as in v1). Both Jobs get labels that say which wood they are for.
+3. The command creates a new Job "<sketch> Pocket" with the sketch as model,
+   copies of the two tool controllers, a copy of the source Job's stock
+   settings (FreeCAD's stock template), and the v1 pair with Flat Depth P. It
+   creates a new Job "<sketch> Plug" with the same sketch as model, its own
+   copies of the two tool controllers, and the plug op plus its clearance op
+   (clearance first, as in v1). The labels say which wood each Job is for.
 4. The plug Job's stock defaults to FreeCAD's model-based stock. The user sets
    the plug wood's real thickness; the README says it must be at least
    P − G + S plus a safe base.

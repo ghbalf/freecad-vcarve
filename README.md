@@ -77,8 +77,9 @@ Clearance operation (group "V-Carve"):
 
 ## V-carve inlay
 
-**V-Carve Inlay** makes a pocket in one board and a matching plug in another. Select one sketch in a
-Job that has a V-bit and an end mill tool controller and run the command. The dialog asks for:
+**V-Carve Inlay** makes a pocket in one board and a matching plug in another. Select one sketch (or its
+clone in a Job) and run the command. The tool controllers come from the sketch's Job (or the only Job),
+which needs a V-bit and an end mill; that Job itself is not changed. The dialog asks for:
 
 - **V-bit** and **End mill**: the tool controllers to use.
 - **Pocket depth** P and **Glue gap** G: the defaults fit the chosen V-bit.
@@ -86,11 +87,11 @@ Job that has a V-bit and an end mill tool controller and run the command. The di
   which takes longer).
 - **Ridge pass**: on by default, see below.
 
-The command creates two Jobs:
+The command creates two new Jobs, each with its own copies of the two tool controllers:
 
-- **The pocket Job** (your Job) gets the usual V-Carve Pair with `FlatDepth` = P.
-- **The plug Job** "`<sketch> Plug`" is new. It has copies of the two tool controllers, a V-Carve Plug
-  op and its clearance op. The plug op carves the mirrored design as a raised plug.
+- **The pocket Job** "`<sketch> Pocket`" has your Job's stock settings and the usual V-Carve Pair with
+  `FlatDepth` = P.
+- **The plug Job** "`<sketch> Plug`" has a V-Carve Plug op and its clearance op. The plug op carves the mirrored design as a raised plug.
 
 The plug is carved at depth P − G + S below the plug board's top (S is `SurfaceGap`; `PlugStartDepth`
 shows P − G). Seated, the plug's cut floor sits S above the pocket board's surface. Saw and plane

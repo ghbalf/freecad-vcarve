@@ -16,7 +16,7 @@ _COMMANDS = [
     ("CAM_VCarvePlug", "vcarve_plug.svg", QT_TRANSLATE_NOOP("CAM_VCarvePlug", "V-Carve Plug"),
      QT_TRANSLATE_NOOP("CAM_VCarvePlug", "Carve the mirrored plug of a V-carve pocket")),
     ("CAM_VCarveInlay", "vcarve_inlay.svg", QT_TRANSLATE_NOOP("CAM_VCarveInlay", "V-Carve Inlay"),
-     QT_TRANSLATE_NOOP("CAM_VCarveInlay", "Set up a V-carve inlay: the pocket in this Job and the plug in a new Job")),
+     QT_TRANSLATE_NOOP("CAM_VCarveInlay", "Set up a V-carve inlay: a new Job for the pocket and a new Job for the plug")),
 ]
 
 

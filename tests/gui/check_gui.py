@@ -188,6 +188,7 @@ def main():
     assert abs(dialog.pocket.value() - p2) < 0.01 and abs(dialog.glue.value() - g2) < 0.01, "V-bit change keeps P and G"
     assert ok.isEnabled() and not dialog.error.text()
 
+    ops0, tools0 = list(job0.Operations.Group), list(job0.Tools.Group)
     seen = []
     with mock.patch.object(inlay_dialog.InlayDialog, "exec_",
                            lambda self: seen.append(self.values()) or QtGui.QDialog.Accepted):
@@ -197,20 +198,22 @@ def main():
     assert len(warnings) == 1 and len(seen) == 1, warnings
     assert set(seen[0]) == {"vtc", "etc", "pocket_depth", "glue_gap", "boundary", "ridge"}, seen
     jobs = PathUtils.GetJobs()
-    assert len(jobs) == 2, [j.Label for j in jobs]
+    assert len(jobs) == 3, [j.Label for j in jobs]
+    assert (list(job0.Operations.Group), list(job0.Tools.Group)) == (ops0, tools0), "Inlay changed the selected Job"
+    qjob, pjob = (next(j for j in jobs if j.Label == f"Letters {s}") for s in ("Pocket", "Plug"))
     for j in jobs:
         for op in j.Operations.Group:
             want = "Endmill" if hasattr(op, "VCarveOp") else "VBit"
             assert tool_shape(op.ToolController.Tool) == want, f"{j.Label}/{op.Label}: {op.ToolController.Label}"
     Gui.Selection.clearSelection()
-    Gui.Selection.addSelection(jobs[1].Model.Group[0])  # the plug Job's clone picks the plug Job
-    assert commands._find_job() == jobs[1], commands._find_job().Label
-    pclr, plug = jobs[1].Operations.Group
-    new_ops = [*jobs[0].Operations.Group[-2:], pclr, plug]
+    Gui.Selection.addSelection(pjob.Model.Group[0])  # the plug Job's clone picks the plug Job
+    assert commands._find_job() == pjob, commands._find_job().Label
+    pclr, plug = pjob.Operations.Group
+    new_ops = [*qjob.Operations.Group, pclr, plug]
     assert all(abs(op.StepDown.Value - 1.5) < 1e-9 for op in new_ops), [op.StepDown for op in new_ops]
     check_icons([pclr, plug])
     assert plug.PocketOp is not None
-    page = types.SimpleNamespace(job=jobs[1])
+    page = types.SimpleNamespace(job=pjob)
     assert plug in panels.ClearanceOpPage._vcarve_ops(page), "clearance combo omits the plug op"
 
     pocket = plug.PocketOp

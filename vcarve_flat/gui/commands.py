@@ -155,9 +155,8 @@ class _InlayCommand:
         if job is None:
             return
         selected = Gui.Selection.getSelection()
-        clone = selection.job_clone(job, selected[0]) if len(selected) == 1 else None
-        if clone is None or not is_sketch_base(clone):
-            _warn(translate("CAM_VCarve", "Select exactly one sketch of the Job"))
+        if len(selected) != 1 or not is_sketch_base(selected[0]):
+            _warn(translate("CAM_VCarve", "Select exactly one sketch"))
             return
         tcs = job.Tools.Group
         vtcs = [tc for tc in tcs if tool_shape(tc.Tool) == "VBit"]
@@ -171,10 +170,11 @@ class _InlayCommand:
         doc = App.ActiveDocument
         doc.openTransaction("Create V-Carve Inlay")
         try:
-            pocket, plug_job, plug = inlay.create_inlay(job, clone, **dialog.values())
-            plug_job.ViewObject.Proxy = JobGui.ViewProvider(plug_job.ViewObject)  # as JobGui.Create
-            plug_job.ViewObject.addExtension("Gui::ViewProviderGroupExtensionPython")
-            plug_job.ViewObject.Proxy.deleteOnReject = False
+            pocket_job, pocket, plug_job, plug = inlay.create_inlay(job, selected[0], **dialog.values())
+            for new_job in (pocket_job, plug_job):  # as JobGui.Create
+                new_job.ViewObject.Proxy = JobGui.ViewProvider(new_job.ViewObject)
+                new_job.ViewObject.addExtension("Gui::ViewProviderGroupExtensionPython")
+                new_job.ViewObject.Proxy.deleteOnReject = False
             vcarve_res, clearance_res, plug_res = self.res
             for (clearance, carve), carve_res in ((pocket, vcarve_res), (plug, plug_res)):
                 _attach(clearance, clearance_res, False)
