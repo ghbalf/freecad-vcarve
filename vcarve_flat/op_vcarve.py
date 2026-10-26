@@ -106,7 +106,7 @@ def rest_clearance(cop) -> App.Vector:
 def _rest_pocket(obj, cs, faces, rc):
     floor = obj.Proxy.floor(obj, cs, faces)
     if rc.x > 0:
-        floor = rest_faces(floor, rc.x, rc.y)
+        floor = rest_faces(floor, [(rc.x, rc.y)])
     return pocket_polylines(floor, max(cs.vbit.tip_radius, MIN_REST_TOOL_RADIUS),
                             rest_stepover(cs.vbit, obj.RestScallop.Value), "Offset", 0,
                             cs.z_top - cs.depth, obj.Discretize)

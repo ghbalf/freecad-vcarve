@@ -9,6 +9,8 @@ import Path
 
 _POCKET_MODE = {"ZigZag": 4, "Offset": 2}  # Path.Area: 4 = ZigZagOffset (zigzag plus a contour pass)
 
+_ARC_FIT_TOL = 0.02  # mm
+
 
 def _split_circles(wire):
     """wire with each full circle split into two arcs: OCC's makeOffset2D mishandles full circles."""
@@ -130,12 +132,10 @@ def offset_faces(faces, distance: float, sharp: bool = False) -> list:
     return ref
 
 
-def rest_faces(floor, tool_radius: float, allowance: float) -> list:
-    """The part of floor an end mill of tool_radius cannot reach, keeping allowance from the walls.
-    The swept area is Path.Area's, like the pocketing: OCC's outward makeOffset2D drops the outer
-    wire of some faces with holes (font letters such as O and B) or fails on them. OCC's exact cut
-    is used unless its area is off (see area_subtract): Path.Area's re-fit arcs can leave slivers just
-    outside the floor, where the V-bit would cut into the wall."""
+def swept_faces(floor, tool_radius: float, allowance: float) -> list:
+    """The area an end mill of tool_radius reaches in floor, keeping allowance from the walls. It is
+    Path.Area's, like the pocketing: OCC's outward makeOffset2D drops the outer wire of some faces
+    with holes (font letters such as O and B) or fails on them."""
     if not floor:
         return []
     area = Path.Area()
@@ -143,13 +143,33 @@ def rest_faces(floor, tool_radius: float, allowance: float) -> list:
         area.add(face)
     centres = area.makeOffset(offset=-(tool_radius + allowance))
     if not centres.Faces:
-        return floor
-    swept = Path.Area().add(centres).makeOffset(offset=tool_radius).Faces
+        return []
+    return Path.Area().add(centres).makeOffset(offset=tool_radius).Faces
+
+
+def rest_faces(floor, tools) -> list:
+    """The part of floor that the end mills in tools, (radius, allowance) each, cannot reach. OCC's
+    exact cut is used unless its area is off (see area_subtract): Path.Area's re-fit arcs can leave
+    slivers just outside the floor, where the V-bit would cut into the wall."""
+    swept = union([f for r, a in tools for f in swept_faces(floor, r, a)])
+    if not floor or not swept:
+        return list(floor)
     rest = subtract(floor, swept)
     expected = sum(f.Area for f in floor) - sum(f.Area for f in swept)  # swept lies inside floor
     if abs(sum(f.Area for f in rest) - expected) > 0.05 * sum(f.Length for f in floor):
         return area_subtract(floor, swept)
     return rest
+
+
+def rest_region(floor, tools, tool_radius: float) -> list:
+    """The region an end mill of tool_radius pockets after tools: the leftovers grown by its
+    diameter, so that its sweep reaches them, kept inside floor."""
+    if not tools:
+        return list(floor)
+    # Path.Area re-fits arcs up to 0.02 mm off and leaves hairlines where the sweep meets the wall:
+    # shrinking by that much drops them
+    rest = offset_faces(rest_faces(floor, tools), -_ARC_FIT_TOL)
+    return intersect(offset_faces(rest, 2 * tool_radius + _ARC_FIT_TOL), floor) if rest else []
 
 
 def subtract(a, b) -> list:

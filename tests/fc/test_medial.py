@@ -217,7 +217,7 @@ class ClearingTests(unittest.TestCase):
 
     def test_rest_area(self):
         floor = [poly_face([(0, 0), (30, 0), (30, 4), (40, 4), (40, 6), (30, 6), (30, 10), (0, 10)])]
-        rest = rest_faces(floor, 1.5, 0)
+        rest = rest_faces(floor, [(1.5, 0)])
         self.assertTrue(rest)
         self.assertTrue(any(f.isInside(V(35, 5, 0), 1e-6, True) for f in rest))
 
@@ -225,7 +225,7 @@ class ClearingTests(unittest.TestCase):
         # An "O": OCC's outward makeOffset2D dropped the outer wire of such faces (or failed), so the
         # end mill seemed to clear almost nothing and the V-bit re-cleared the whole floor
         floor = Part.Face(Part.Wire(Part.makeCircle(20))).cut(Part.Face(Part.Wire(Part.makeCircle(12)))).Faces
-        rest = rest_faces(floor, 1.5875, 0)
+        rest = rest_faces(floor, [(1.5875, 0)])
         self.assertLess(sum(f.Area for f in rest), 0.01 * floor[0].Area)
 
     def test_area_subtract_near_outlines(self):
@@ -238,7 +238,7 @@ class ClearingTests(unittest.TestCase):
     def test_rest_area_when_cut_fails(self):
         floor = Part.Face(Part.Wire(Part.makeCircle(20))).cut(Part.Face(Part.Wire(Part.makeCircle(12)))).Faces
         with mock.patch.object(clearing, "subtract", lambda a, b: list(a)):  # OCC's cut keeping the floor
-            rest = rest_faces(floor, 1.5875, 0)
+            rest = rest_faces(floor, [(1.5875, 0)])
         self.assertLess(sum(f.Area for f in rest), 0.01 * floor[0].Area)
 
     def test_subtract_empty(self):
