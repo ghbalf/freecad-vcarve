@@ -15,8 +15,10 @@ from test_op_vcarve import RECT, RING, cut_points
 from vcarve_flat import op_clearance, op_plug
 from vcarve_flat.clearing import area_offset
 from vcarve_flat.geom import VBit, flat_radius, inlay_defaults, pass_depths
+from vcarve_flat.medial import boundary_segments, medial_polylines
 
 BAR = [(0, 0), (30, 0), (30, 2), (0, 2)]
+BAR3 = [(0, 24), (30, 24), (30, 27), (0, 27)]
 THIN_BAR = [(58, 22), (80, 22), (80, 22.8), (58, 22.8)]
 LETTERS = [[(34, 24), (44, 24), (44, 34), (34, 34)], [(44.3, 24), (54.3, 24), (54.3, 34), (44.3, 34)]]
 
@@ -214,6 +216,17 @@ class PlugTests(unittest.TestCase):
         ell = [(0, 0), (30, 0), (30, 8), (8, 8), (8, 30), (0, 30)]
         self.inlay(loops=(ell, [(x + 40, y) for x, y in THIN_BAR]), circles=(), tip=1)
         self.assertFalse(self.logged(self.warn, "narrower"), self.warn.call_args_list)
+
+    def test_medial_axis_in_complement(self):
+        # FreeCAD 26.3 discretized two short parabolic Voronoi edges 43 mm off, inside the mirrored
+        # design: the plug's V-bit cut into the bar's wall by 1.25 mm
+        self.inlay(loops=(RECT, BAR3, *LETTERS, THIN_BAR), tip=1)
+        (_, complement), = self.plug.Proxy.regions(self.plug)
+        for face in complement:
+            for xy in medial_polylines(face, boundary_segments(face, self.plug.Discretize), self.plug.Colinear,
+                                       self.plug.StepLength.Value):
+                out = [p for p in xy if not face.isInside(App.Vector(*p, 0), 1e-3, True)]
+                self.assertFalse(out, out[:5])
 
     def test_stock_edit_recomputes(self):
         """The user sets the real plug thickness after creating the ops."""
