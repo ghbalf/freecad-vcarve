@@ -8,7 +8,7 @@ import FreeCAD as App
 import numpy as np
 import Path
 
-from fit import make_inlay, seated
+from fit import cut_height, make_inlay, seated
 from test_op_vcarve import RECT, RING
 
 BAR3 = [(0, 24), (30, 24), (30, 27), (0, 27)]
@@ -52,6 +52,26 @@ def corner_strips(n):
 def line(y):
     x = np.arange(0, 80 + 1e-9, 0.05)
     return np.column_stack([x, np.full_like(x, y)])
+
+
+class CutHeightTests(unittest.TestCase):
+    def test_exact_between_samples(self):
+        # Path points 0.05 mm apart read a pointed V up to 0.025/t = 0.043 mm too shallow between them
+        t = math.tan(math.radians(30))
+        q = np.array([(5.025, 0.0), (5.0, 1.0), (7.31, -0.4), (0.2, 0.9)])
+        for (a, b), tool in [(((0, 0, -1), (10, 0, -1)), (3, 0, t)), (((0, 0, -2), (10, 0, 0)), (3, 0, t)),
+                             (((0, 0, -2), (10, 0, 0)), (3, 0.5, t)), (((0, 0, -2), (10, 0, 0)), (2.5, 2.5, math.inf))]:
+            a, b = np.array([a], float), np.array([b], float)
+            u = np.linspace(0, 1, 200001)[:, None]
+            c = a + u * (b - a)
+            radius, tip, slope = tool
+            rho = np.hypot(q[:, None, 0] - c[None, :, 0], q[:, None, 1] - c[None, :, 1])
+            z = np.where(rho <= radius, c[None, :, 2] + np.maximum(0, rho - tip) / slope, np.inf).min(axis=1)
+            np.testing.assert_allclose(cut_height([((a, b), tool)], q), np.minimum(z, 0), atol=1e-4)
+        # a plunge cuts only around its axis
+        plunge = (np.array([(5.0, 0, 0)]), np.array([(5.0, 0, -1)]))
+        np.testing.assert_allclose(cut_height([(plunge, (3, 0, t))], np.array([(5, 0), (5, 0.3), (9, 0)])),
+                                   [-1, -1 + 0.3 / t, 0], atol=1e-9)
 
 
 class FitTests(unittest.TestCase):
