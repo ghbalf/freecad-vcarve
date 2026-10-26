@@ -33,7 +33,7 @@ def _stepdown(op, value):
 def _new_job(src, sketch, label, tcs):
     """A Job for sketch with copies of tcs; returns it and the copies."""
     doc = src.Document
-    job = Path.Main.Job.Create(label, [sketch], None)
+    job = Path.Main.Job.Create("Job", [sketch], None)  # the CAM simulators list only names Job*
     job.Label = label
     for tc in list(job.Tools.Group):  # the default one; onDelete removes its tool bit, as the GUI does
         tc.Proxy.onDelete(tc)

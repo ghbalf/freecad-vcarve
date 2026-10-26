@@ -44,6 +44,8 @@ class InlayTests(unittest.TestCase):
                          sorted(o.Name for o in jobs))
         self.assertEqual((list(self.job.Operations.Group), list(self.job.Tools.Group)), (ops, tools))
         self.assertEqual((qjob.Label, pjob.Label), ("Letters Pocket", "Letters Plug"))
+        # the CAM simulators list only Jobs whose internal name starts with "Job"
+        self.assertEqual(len(self.doc.findObjects("Path::FeaturePython", "Job.*")), 3)
         for job in (qjob, pjob):
             self.assertEqual(len(job.Tools.Group), 2)
             for src in (self.vtc, self.etc):
