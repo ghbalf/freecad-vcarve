@@ -112,6 +112,13 @@ class PlugTests(unittest.TestCase):
             self.assertLessEqual(got - r, edge + 0.05)
             self.assertGreaterEqual(got, edge - r - 0.05)
         self.assertFalse(self.logged(self.warn, "cover"))
+        self.assertFalse(self.logged(self.warn, self.plug.Label, "real board size"))
+
+    def test_default_stock_warns(self):
+        self.inlay(circles=(), PlugBoundary="Stock")  # FreeCAD's 1 mm stock margins
+        self.assertEqual(len(cut_points(self.clr)), 0)
+        self.assertTrue(self.logged(self.warn, self.plug.Label, "real board size", "5 mm"), self.warn.call_args_list)
+        self.assertTrue(self.logged(self.warn, self.clr.Label, "no floor reachable"), self.warn.call_args_list)
 
     def test_margin_too_small(self):
         self.inlay(PlugMargin=2)

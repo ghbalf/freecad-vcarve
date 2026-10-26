@@ -137,7 +137,7 @@ class ObjectVCarveClearance(PathOp.ObjectOp):
                 pos = level[-1][-1, :2]
             paths += level
         if not paths:
-            Path.Log.info(f"{obj.Label}: no floor reachable by the end mill")
+            Path.Log.warning(f"{obj.Label}: no floor reachable by the end mill")
             return
         self.commandlist.extend(paths_to_commands(paths, obj.SafeHeight.Value,
                                                   obj.ClearanceHeight.Value, tc.HorizFeed.Value,

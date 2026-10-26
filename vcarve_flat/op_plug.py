@@ -207,6 +207,14 @@ class ObjectVCarvePlug(op_vcarve.ObjectVCarveFlat):
             if bb.XMin < stock.XMin - 1e-6 or bb.YMin < stock.YMin - 1e-6 \
                     or bb.XMax > stock.XMax + 1e-6 or bb.YMax > stock.YMax + 1e-6:
                 Path.Log.warning(f"{obj.Label}: the plug Job's stock does not cover the mirrored design")
+            rc = op_vcarve.rest_clearance(op_vcarve.find_clearance_op(obj))
+            grown = Part.makeCompound(area_offset(design, flat_radius(vbit, obj.SurfaceGap.Value)))
+            edge = Part.makePlane(stock.XLength, stock.YLength,
+                                  App.Vector(stock.XMin, stock.YMin, grown.BoundBox.ZMin)).OuterWire
+            if rc.x and grown.distToShape(edge)[0] < 2 * rc.x:
+                Path.Log.warning(f"{obj.Label}: the stock margin beyond the plug is narrower than the end mill "
+                                 f"diameter {2 * rc.x:g} mm, so the clearance op cannot cut there and the "
+                                 "V-bit clears it. Set the plug Job's stock to the real board size")
         super().opExecute(obj)
         complement = self._last[0] if self._last else []
         if vbit.tip_radius > 0 and any(
