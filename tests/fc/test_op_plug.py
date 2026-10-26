@@ -125,6 +125,15 @@ class PlugTests(unittest.TestCase):
         self.assertEqual(len(cut_points(self.clr)), 0)
         self.assertTrue(self.logged(self.err, self.clr.Label, "Plug Margin"), self.err.call_args_list)
 
+    def test_margin_counts_tip_radius(self):
+        self.inlay(tip=0.8)  # the floor starts r_t beyond the plug's wall: the ring is PlugMargin - r_t wide
+        d, r_t = self.etc.Tool.Diameter.Value, self.vbit.tip_radius
+        self.recompute(PlugMargin=d + r_t - 0.1)
+        self.assertEqual(len(cut_points(self.clr)), 0)
+        self.assertTrue(self.logged(self.err, self.clr.Label, "Plug Margin"), self.err.call_args_list)
+        self.recompute(PlugMargin=d + r_t + 0.1)
+        self.assertTrue(len(cut_points(self.clr)))
+
     def test_pocket_without_flat_depth(self):
         self.inlay()
         self.vc.FlatDepth = 0

@@ -34,7 +34,7 @@ def create_inlay(job, sketch, vtc, etc, pocket_depth, glue_gap, boundary="Margin
     each pair being (clearance, V-carve or plug op)."""
     _check_tc(vtc, "VBit", "V-bit")
     _check_tc(etc, "Endmill", "end mill")
-    clone = next((c for c in job.Model.Group if c is sketch or sketch in getattr(c, "Objects", ())), None)
+    clone = next((c for c in job.Model.Group if c == sketch or sketch in getattr(c, "Objects", ())), None)
     if clone is None:
         raise ValueError(f"The sketch {sketch.Label} is not in the Job {job.Label}")
     original = clone.Objects[0]

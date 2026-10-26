@@ -109,7 +109,7 @@ def ridge_polylines(face, vbit, z_base, height, *, deflection, colinear_deg, ste
     paths = []
     for xy in medial_polylines(face, segments, colinear_deg, step):
         xy, up = _depths(vbit, xy, segments, 0.0, height)
-        path = np.column_stack([xy, -(z_base + up)])
+        path = np.column_stack([xy, -(z_base + up)])  # z negated: drop_floor_runs drops runs at/below a floor
         paths += [p * [1, 1, -1] for p in drop_floor_runs(path, -(z_base + height))]
     return [simplify(p, tol) for p in paths]
 

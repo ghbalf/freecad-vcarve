@@ -113,7 +113,7 @@ Plug operation (group "V-Carve Plug"):
 | `GlueGap` | 0.2 mm | Gap between plug top and pocket floor when seated |
 | `SurfaceGap` | set by the command: min(1.5 mm, cone height − (P − G)) | Gap between plug board and board surface when seated (the plug's flat depth S) |
 | `RidgePass` | on | Flatten the plug's narrow ridges for a tipped V-bit |
-| `PlugMargin` | 10 mm | Margin mode: width of the flat ring cleared around the plug, at least the end mill diameter |
+| `PlugMargin` | 10 mm | Margin mode: width of the flat ring cleared around the plug; its width beyond the V-bit tip radius must be at least the end mill diameter |
 | `PlugBoundary` | Margin | Margin: a ring around the plug; Stock: the whole stock of the plug Job |
 | `MirrorAxis` | X | X flips left-right, Y flips front-back, about the design's bounding-box centre |
 | `PlugStartDepth` | read-only | P − G |

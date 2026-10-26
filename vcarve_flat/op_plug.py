@@ -29,7 +29,8 @@ _PROPS = [  # (type, name, default, tooltip)
      "Flatten the plug's ridges where they are narrower than the V-bit tip, to match the pocket "
      "grooves (no path for a pointed V-bit)"),
     ("App::PropertyLength", "PlugMargin", mm(10),
-     "Margin mode: width of the flat ring cleared around the plug's footprint at the floor"),
+     "Margin mode: width of the flat ring cleared around the plug's footprint at the floor; less the V-bit "
+     "tip radius, at least the end mill diameter"),
 ]
 _ENUMS = [  # (name, values, tooltip); the first value is the default
     ("PlugBoundary", ["Margin", "Stock"],
@@ -139,9 +140,10 @@ class ObjectVCarvePlug(op_vcarve.ObjectVCarveFlat):
             return []
 
     def end_mill_error(self, obj, diameter):
-        if obj.PlugBoundary == "Margin" and obj.PlugMargin.Value < diameter:
-            return (f"Plug Margin {obj.PlugMargin.Value:g} mm of {obj.Label} is narrower than the end mill "
-                    f"diameter {diameter:g} mm")
+        ring = obj.PlugMargin.Value - op_vcarve.tool_vbit(obj.ToolController).tip_radius  # floor starts r_t out
+        if obj.PlugBoundary == "Margin" and ring < diameter:
+            return (f"Plug Margin {obj.PlugMargin.Value:g} mm of {obj.Label}, less the V-bit tip radius, is "
+                    f"narrower than the end mill diameter {diameter:g} mm")
         return None
 
     def opFeatures(self, obj):
