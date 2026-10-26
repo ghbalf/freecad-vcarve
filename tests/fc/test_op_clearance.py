@@ -10,8 +10,8 @@ import Part
 import Path
 import Path.Tool.Controller
 
-from helpers import _tool, make_job, make_sketch
-from test_op_vcarve import RECT, cut_points
+from helpers import _tool, add_clearance, make_job, make_sketch
+from test_op_vcarve import L_FAR, RECT, cut_points, g1_length
 from vcarve_flat import op_clearance, op_vcarve
 from vcarve_flat.compat import tool_shape
 from vcarve_flat.geom import flat_radius
@@ -63,8 +63,8 @@ class ClearanceTests(unittest.TestCase):
         clr, vc = self.pair([NECK])
         cs = op_vcarve.carve_setup(vc)
         (_, faces), = op_vcarve.region_sets(vc)
-        with_c = op_vcarve._rest_pocket(vc, cs, faces, op_vcarve.rest_clearance(clr))
-        without = op_vcarve._rest_pocket(vc, cs, faces, App.Vector())
+        with_c = op_vcarve._rest_pocket(vc, cs, faces, op_vcarve.chain_tools([clr]))
+        without = op_vcarve._rest_pocket(vc, cs, faces, [])
         n = lambda ps: sum(len(p) for p in ps)
         self.assertLess(n(with_c), n(without))
         pts = np.vstack(with_c)
@@ -90,7 +90,7 @@ class ClearanceTests(unittest.TestCase):
         after = vc.Path.toGCode()
         self.assertTrue(after != before, "V-carve op not recomputed")
         self.assertNotIn("Touched", vc.State)
-        self.assertEqual(vc.RestClearance, App.Vector(5, 0, 0))
+        self.assertEqual(vc.RestChain, "5,0")
         Path.Log.warning.assert_not_called()
         vc.touch()
         self.doc.recompute()
@@ -110,8 +110,8 @@ class ClearanceTests(unittest.TestCase):
         clr.VCarveOp = other
         self.assertIn("Touched", vc.State)
         self.doc.recompute()
-        self.assertEqual(vc.RestClearance, App.Vector())
-        self.assertEqual(other.RestClearance, App.Vector(2.5, 0, 0))
+        self.assertEqual(vc.RestChain, "")
+        self.assertEqual(other.RestChain, "2.5,0")
 
     def test_repoint_after_restore_touches_old_link(self):
         clr, vc = self.pair([RECT])
@@ -127,14 +127,74 @@ class ClearanceTests(unittest.TestCase):
         clr.VCarveOp = other
         self.assertIn("Touched", vc.State)
 
-    def test_two_active_clearance_ops_warn(self):
+    def warned(self, text):
+        return [str(c.args[0]) for c in Path.Log.warning.call_args_list if c.args and text in str(c.args[0])]
+
+    def test_two_active_clearance_ops_settle(self):
         clr, vc = self.pair([RECT])
         second = op_clearance.Create("C2", parentJob=self.job, tc=self.etc)
         second.VCarveOp = vc
         self.doc.recompute()
-        msgs = [str(c.args[0]) for c in Path.Log.warning.call_args_list if c.args]
-        self.assertTrue(any(vc.Label in m and "several" in m for m in msgs), msgs)
-        self.assertNotIn("Touched", vc.State)
+        self.assertEqual(vc.RestChain, "2.5,0;2.5,0")
+        self.assertEqual((clr.RestChain, second.RestChain), ("", "2.5,0"))
+        for op in (clr, second, vc):
+            self.assertNotIn("Touched", op.State)
+
+    def test_rest_only_chain(self):
+        self.pair([RECT, L_FAR], flat=2.0)
+        rest = add_clearance(self.doc, self.job, self.vc, 1.0, rest_only=True)
+        part = g1_length(rest)
+        self.assertFalse(self.warned("not smaller") or self.warned("no clearance op before it"))
+        rest.RestOnly = False
+        self.doc.recompute()
+        self.assertGreater(part, 0)
+        self.assertLess(part, 0.5 * g1_length(rest))
+
+    def test_rest_only_without_earlier_op(self):
+        clr, _ = self.pair([RECT])
+        whole = cut_points(clr)
+        clr.RestOnly = True
+        self.doc.recompute()
+        np.testing.assert_allclose(cut_points(clr), whole)
+        self.assertTrue(self.warned("no clearance op before it"), Path.Log.warning.call_args_list)
+
+    def test_rest_only_larger_tool_warns(self):
+        self.pair([RECT], flat=2.0)
+        rest = add_clearance(self.doc, self.job, self.vc, 8.0, rest_only=True)
+        self.assertTrue(any(rest.Label in m for m in self.warned("not smaller")), Path.Log.warning.call_args_list)
+
+    def test_chain_change_retouches_rest_op(self):
+        clr, vc = self.pair([RECT, L_FAR], flat=2.0)
+        rest = add_clearance(self.doc, self.job, vc, 1.0, rest_only=True)
+        before = g1_length(rest)
+        clr.ToolController.Tool.Diameter = 3
+        self.doc.recompute()
+        self.assertEqual(rest.RestChain, "1.5,0")
+        self.assertLess(g1_length(rest), before)
+        for op in (clr, rest, vc):
+            self.assertNotIn("Touched", op.State)
+
+    def test_restore_without_rest_only(self):
+        clr, vc = self.pair([NECK])
+        paths = clr.Path.toGCode(), vc.Path.toGCode()
+        clr.removeProperty("RestOnly")
+        clr.removeProperty("RestChain")
+        vc.removeProperty("RestChain")
+        vc.addProperty("App::PropertyVectorDistance", "RestClearance", "V-Carve")  # as saved by 0.2.0
+        names = clr.Name, vc.Name
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "t.FCStd")
+            self.doc.saveAs(path)
+            App.closeDocument(self.doc.Name)
+            self.doc = App.openDocument(path)
+        clr, vc = (self.doc.getObject(n) for n in names)
+        self.assertFalse(clr.RestOnly)
+        self.assertFalse(hasattr(vc, "RestClearance"))
+        for op in (clr, vc):
+            self.assertIn("Hidden", op.getEditorMode("RestChain"))
+            op.touch()
+        self.doc.recompute()
+        self.assertEqual((clr.Path.toGCode(), vc.Path.toGCode()), paths)
 
     def test_link_to_non_op_reports_no_vbit(self):
         clr, _ = self.pair([RECT])

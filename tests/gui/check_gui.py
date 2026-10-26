@@ -116,6 +116,18 @@ def main():
     clr.VCarveOp = vc
     accept_clearance()
     assert clr.VCarveOp == vc
+    for rest in (True, False):  # the checkbox shows RestOnly, and OK writes the toggled box back
+        clr.RestOnly = rest
+        clr.ViewObject.Document.setEdit(clr.ViewObject, 0)
+        panel = clr.ViewObject.Proxy.panel
+        box = next(p.form.RestOnly for p in panel.featurePages if hasattr(p.form, "RestOnly"))
+        assert box.isChecked() == rest, f"RestOnly {rest} shown as {box.isChecked()}"
+        box.setChecked(not rest)
+        for page in panel.featurePages:
+            page.setDirty()
+        panel.accept()
+        QtGui.QApplication.processEvents()
+        assert clr.RestOnly == (not rest), f"RestOnly not written back: {clr.RestOnly}"
 
     Gui.Selection.clearSelection()
     Gui.Selection.addSelection(sk, "Vertex1")

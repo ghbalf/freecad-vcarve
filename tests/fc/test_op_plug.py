@@ -9,7 +9,8 @@ import Part
 
 from fit import make_inlay
 from test_fit import LETTERS, LOOPS, THIN
-from test_op_vcarve import RECT, RING, cut_points
+from helpers import add_clearance
+from test_op_vcarve import L_SHAPE, RECT, RING, cut_points, g1_length
 from vcarve_flat.clearing import area_offset
 from vcarve_flat.geom import flat_radius, pass_depths
 from vcarve_flat.medial import boundary_segments, medial_polylines
@@ -113,6 +114,15 @@ class PlugTests(unittest.TestCase):
             self.assertGreaterEqual(got, edge - r - 0.05)
         self.assertFalse(self.logged(self.warn, "cover"))
         self.assertFalse(self.logged(self.warn, self.plug.Label, "real board size"))
+
+    def test_plug_rest_chain(self):
+        plug = self.inlay(loops=(L_SHAPE,), circles=(), tip=0)  # the L's inner corner leaves floor
+        floor = cut_points(plug)[:, 2].min()
+        one = g1_length(plug, floor)
+        add_clearance(self.doc, self.pjob, plug, 1.0, rest_only=True)
+        self.assertEqual(plug.RestChain, "2.5,0;0.5,0")
+        self.assertLess(g1_length(plug, floor), one)
+        self.assertFalse(self.logged(self.warn, "several"), self.warn.call_args_list)
 
     def test_default_stock_warns(self):
         self.inlay(circles=(), PlugBoundary="Stock")  # FreeCAD's 1 mm stock margins

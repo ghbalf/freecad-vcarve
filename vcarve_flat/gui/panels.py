@@ -150,6 +150,7 @@ class ClearanceOpPage(_Page):
         form.StepOver.setSuffix(" %")
         form.PocketPattern = _row(grid, translate("CAM_VCarve", "Pattern"), QtGui.QComboBox())
         self.quantity(form, grid, "Allowance", translate("CAM_VCarve", "Allowance"))
+        form.RestOnly = _row(grid, translate("CAM_VCarve", "Rest only"), QtGui.QCheckBox())
 
     def _vcarve_ops(self):
         ops = self.job.Operations.Group if self.job else []
@@ -167,6 +168,8 @@ class ClearanceOpPage(_Page):
         pattern = self.form.PocketPattern.currentText()
         if pattern in obj.getEnumerationsOfProperty("PocketPattern") and obj.PocketPattern != pattern:
             obj.PocketPattern = pattern
+        if obj.RestOnly != self.form.RestOnly.isChecked():
+            obj.RestOnly = self.form.RestOnly.isChecked()
 
     def setFields(self, obj):
         super().setFields(obj)
@@ -187,11 +190,12 @@ class ClearanceOpPage(_Page):
         pattern.addItems(obj.getEnumerationsOfProperty("PocketPattern"))
         pattern.setCurrentText(obj.PocketPattern)
         pattern.blockSignals(False)
+        self.form.RestOnly.setChecked(obj.RestOnly)
 
     def getSignalsForUpdate(self, obj):
         return super().getSignalsForUpdate(obj) + [
             self.form.VCarveOp.currentIndexChanged, self.form.StepOver.editingFinished,
-            self.form.PocketPattern.currentIndexChanged]
+            self.form.PocketPattern.currentIndexChanged, self.form.RestOnly.stateChanged]
 
 
 class PlugOpPage(_Page):
