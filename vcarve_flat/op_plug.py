@@ -215,8 +215,8 @@ class ObjectVCarvePlug(op_vcarve.ObjectVCarveFlat):
                                   App.Vector(stock.XMin, stock.YMin, grown.BoundBox.ZMin)).OuterWire
             if rc.x and grown.distToShape(edge)[0] < 2 * rc.x:
                 Path.Log.warning(f"{obj.Label}: the stock margin beyond the plug is narrower than the end mill "
-                                 f"diameter {2 * rc.x:g} mm, so the clearance op cannot cut there and the "
-                                 "V-bit clears it. Set the plug Job's stock to the real board size")
+                                 f"diameter {2 * rc.x:g} mm, so the clearance op may not clear it fully and the "
+                                 "V-bit clears the rest. Set the plug Job's stock to the real board size")
         super().opExecute(obj)
         complement = self._last[0] if self._last else []
         if vbit.tip_radius > 0 and any(

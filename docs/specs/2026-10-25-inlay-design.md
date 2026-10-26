@@ -180,12 +180,12 @@ P is the pocket depth, G the glue gap, S the surface gap.
   | `RidgePass` | on | Flatten the plug's narrow ridges for a tipped V-bit (see *The flat tip*) |
   | `PlugBoundary` | chosen in the dialog | `Margin`: a ring around the plug; `Stock`: the whole stock of the plug Job. **A choice for the user (user decision)**; the dialog preselects Margin (my call) |
   | `MirrorAxis` | X | X: flip left–right; Y: flip front–back. Mirrored about the design's bounding-box center |
-  | `PlugMargin` | 10 mm | Margin mode: width of the flat ring cleared around the plug's footprint at the floor (the design offset outward by S·t) |
+  | `PlugMargin` | 10 mm | Margin mode: width of the flat ring cleared around the plug's footprint at the floor (the design offset outward by S·t); the floor starts r_t beyond the plug wall, so the ring is PlugMargin − r_t wide |
 
   In Margin mode (my call) the outer edge of the ring is a **straight
   end-mill wall, not a V-wall**: the V-bit carves only the letter walls, and
-  the end mill clears the ring. A margin narrower than the end mill's
-  diameter is an error. The ring is the room for sawing the plug free.
+  the end mill clears the ring. A ring (PlugMargin − r_t) narrower than
+  the end mill's diameter is an error. The ring is the room for sawing the plug free.
 
   v1's carving fields (Discretize, Colinear, StepLength, Tolerance,
   RestScallop) are kept as properties of the plug op too.
