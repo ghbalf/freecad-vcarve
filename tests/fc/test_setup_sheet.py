@@ -6,9 +6,10 @@ import Path.Base.SetupSheet as PathSetupSheet
 
 from helpers import make_job, make_sketch
 from test_sketches import RECT
-from vcarve_flat import op_clearance, op_vcarve  # noqa: F401  (importing registers the ops)
+from vcarve_flat import op_clearance, op_plug, op_vcarve  # noqa: F401  (importing registers the ops)
 
-OPS = {"VCarveFlat": op_vcarve, "VCarveClearance": op_clearance}
+OPS = {"VCarveFlat": op_vcarve, "VCarveClearance": op_clearance, "VCarvePlug": op_plug}
+KEY_PROP = {"VCarveFlat": "FlatDepth", "VCarveClearance": "StepOver", "VCarvePlug": "GlueGap"}
 
 
 class SetupSheetTests(unittest.TestCase):
@@ -23,7 +24,7 @@ class SetupSheetTests(unittest.TestCase):
             self.assertEqual(op.properties(), mod.SetupProperties())
             # the setup sheet editor builds a prototype of each registered op
             ptt = op.prototype(name)
-            self.assertIn("FlatDepth" if mod is op_vcarve else "StepOver", ptt.properties)
+            self.assertIn(KEY_PROP[name], ptt.properties)
             for prop in ptt.properties.values():
                 prop.displayString()  # the Job panel's Setup tab shows every default; a float Length raised
 

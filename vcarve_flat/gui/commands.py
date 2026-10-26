@@ -12,7 +12,7 @@ import Path.Op.Gui.Base as PathOpGui
 import PathScripts.PathUtils as PathUtils
 from PySide import QtCore, QtGui
 
-from .. import op_clearance, op_vcarve
+from .. import op_clearance, op_plug, op_vcarve  # noqa: F401  (op_plug: registers it with the setup sheet)
 from ..sketches import is_sketch_base
 from . import panels, selection
 

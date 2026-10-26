@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 import unittest
+from unittest import mock
 
 import FreeCAD as App
 import numpy as np
@@ -31,6 +32,7 @@ class TestAreaOffset(unittest.TestCase):
         faces = square_with_hole()
         self.assertAlmostEqual(area(area_offset(faces, 1)), 22 ** 2 - 8 ** 2, delta=1.0)
         self.assertAlmostEqual(area(area_offset(faces, -1)), 18 ** 2 - 12 ** 2, delta=1.0)
+        self.assertEqual(area_offset(faces, 0), faces)
 
     def test_vanished(self):
         self.assertEqual(area_offset(square_with_hole(), -11), [])
@@ -63,6 +65,13 @@ class TestMirror(unittest.TestCase):
         self.assertFalse(out[0].isInside(V(25, 2, 0), 1e-6, True))
         self.assertGreater(out[0].Area, 0)
 
+    def test_right_handed_plane(self):
+        # A mirrored plane is left-handed (its surface normal points down); Path.Area logs about it.
+        for face in mirror_faces(square_with_hole(), "X", V(10, 10, 0)):
+            self.assertGreater(face.Surface.normal(0, 0).z, 0)
+            self.assertGreater(face.normalAt(0, 0).z, 0)
+            self.assertAlmostEqual(face.Area, 20 ** 2 - 10 ** 2)
+
 
 class TestBooleans(unittest.TestCase):
     def test_union_intersect(self):
@@ -70,6 +79,11 @@ class TestBooleans(unittest.TestCase):
         self.assertAlmostEqual(area(union(a + b)), 150)
         self.assertAlmostEqual(area(intersect(a, b)), 50)
         self.assertEqual(union([]), [])
+
+    def test_union_of_one_face_does_not_fuse(self):
+        face = mock.Mock()  # fuse([]) logs "Boolean operation with only one shape input" on 1.1.4
+        self.assertEqual(union([face]), [face])
+        face.fuse.assert_not_called()
 
 
 class TestInsideLoops(unittest.TestCase):

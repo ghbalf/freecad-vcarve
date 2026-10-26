@@ -66,8 +66,8 @@ def pocket_polylines(faces, tool_radius, stepover, pattern, extra_offset, z, def
 def area_offset(faces, distance: float) -> list:
     """Offset faces by distance (positive outward) with Path.Area, which copes with holes in both
     directions; a result that vanishes gives []."""
-    if not faces:
-        return []
+    if not faces or distance == 0:
+        return list(faces)
     area = Path.Area()
     for face in faces:
         area.add(face)
@@ -75,8 +75,8 @@ def area_offset(faces, distance: float) -> list:
 
 
 def union(faces) -> list:
-    if not faces:
-        return []
+    if len(faces) < 2:  # fusing one shape logs "Boolean operation with only one shape input"
+        return list(faces)
     return faces[0].fuse(faces[1:]).removeSplitter().Faces
 
 
@@ -91,10 +91,10 @@ def mirror_faces(faces, axis: str, center) -> list:
     normal = App.Vector(1, 0, 0) if axis == "X" else App.Vector(0, 1, 0)
     out = []
     for face in faces:
-        mirrored = face.mirror(center, normal)
-        if mirrored.Area < 0 or mirrored.normalAt(0, 0).z < 0:
-            mirrored.reverse()
-        out.append(mirrored)
+        # Rebuilt on a right-handed plane (Path.Area logs "left hand coordinate" for the mirrored one);
+        # mirroring reversed the wires.
+        plane = Part.Plane(App.Vector(0, 0, face.BoundBox.ZMin), App.Vector(0, 0, 1))
+        out.append(Part.Face(plane, [w.reversed() for w in face.mirror(center, normal).Wires]))
     return out
 
 

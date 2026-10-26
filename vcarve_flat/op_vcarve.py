@@ -49,9 +49,13 @@ class CarveSetup:
     min_depth: float = 0.0
 
 
+def tool_vbit(tc) -> VBit:
+    t = tc.Tool
+    return VBit(t.Diameter.Value, t.CuttingEdgeAngle.Value, t.TipDiameter.Value)
+
+
 def carve_setup(obj) -> CarveSetup:
-    t = obj.ToolController.Tool
-    vbit = VBit(t.Diameter.Value, t.CuttingEdgeAngle.Value, t.TipDiameter.Value)
+    vbit = tool_vbit(obj.ToolController)
     flat = obj.FlatDepth.Value > 0
     depth, capped = limit_depth(vbit, obj.FlatDepth.Value)
     return CarveSetup(vbit, obj.StartDepth.Value, depth, flat_radius(vbit, depth) if flat else 0.0, capped, flat)

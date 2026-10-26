@@ -92,9 +92,14 @@ def ridge_polylines(face, vbit, z_base, height, *, deflection, colinear_deg, ste
 
 def flat_boundary_loops(face, vbit, z_top, depth_limit, *, deflection, tol) -> list:
     """Closed loops where the V-bit wall meets the flat floor (face offset inward by r_flat)."""
+    return face_loops(offset_faces([face], -flat_radius(vbit, depth_limit)), z_top - depth_limit,
+                      deflection=deflection, tol=tol)
+
+
+def face_loops(faces, z, *, deflection, tol) -> list:
+    """Every wire of faces as a closed, simplified polyline at height z."""
     out = []
-    for f in offset_faces([face], -flat_radius(vbit, depth_limit)):
-        for w in f.Wires:
-            loop = _closed_loop(w, deflection)
-            out.append(simplify(np.column_stack([loop, np.full(len(loop), z_top - depth_limit)]), tol))
+    for w in (w for f in faces for w in f.Wires):
+        loop = _closed_loop(w, deflection)
+        out.append(simplify(np.column_stack([loop, np.full(len(loop), z)]), tol))
     return out
