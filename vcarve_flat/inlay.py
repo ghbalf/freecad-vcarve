@@ -79,4 +79,8 @@ def create_inlay(job, sketch, vtc, etc, pocket_depth, glue_gap, boundary="Margin
     for op in (*pocket, *plug_pair):
         _stepdown(op, stepdown)
     doc.recompute()
+    # the board's thickness, but deep enough for the plug (Job.Create leaves 1 mm below the sketch)
+    floor = min(op.FinalDepth.Value for op in plug_pair)
+    pjob.Stock.ExtZneg = max(job.Stock.Shape.BoundBox.ZLength, pjob.Stock.Shape.BoundBox.ZMax - floor + 1)
+    doc.recompute()
     return qjob, pocket, pjob, plug_pair

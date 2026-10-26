@@ -86,6 +86,18 @@ class InlayTests(unittest.TestCase):
                          (self.job.Stock.Length, self.job.Stock.Width, self.job.Stock.Height))
         self.assertTrue(qjob.Stock.Placement.isSame(place, 1e-9))
 
+    def test_plug_stock_holds_plug(self):
+        """The plug stock is the source stock's thickness, but at least 1 mm below the plug's floor."""
+        for thick in (1, 8):
+            self.job.Stock.ExtZneg = thick
+            self.doc.recompute()
+            _, _, pjob, (clr, plug) = self.build()
+            bb = pjob.Stock.Shape.BoundBox
+            self.assertAlmostEqual(bb.ZMax, 0)
+            board = self.job.Stock.Shape.BoundBox.ZLength  # ExtZpos adds 1 mm above the sketch
+            self.assertAlmostEqual(bb.ZMin, min(-board, clr.FinalDepth.Value - 1, plug.FinalDepth.Value - 1))
+            self.assertAlmostEqual(plug.StartDepth.Value, 0)
+
     def test_options_and_clone(self):
         _, _, _, (_, plug) = self.build(self.job.Model.Group[0], boundary="Stock", ridge=False)
         self.assertEqual((plug.PlugBoundary, plug.RidgePass), ("Stock", False))

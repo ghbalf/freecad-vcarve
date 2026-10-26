@@ -225,9 +225,11 @@ P is the pocket depth, G the glue gap, S the surface gap.
    creates a new Job "<sketch> Plug" with the same sketch as model, its own
    copies of the two tool controllers, and the plug op plus its clearance op
    (clearance first, as in v1). The labels say which wood each Job is for.
-4. The plug Job's stock defaults to FreeCAD's model-based stock. The user sets
-   the plug wood's real thickness; the README says it must be at least
-   P − G + S plus a safe base.
+4. The plug Job's stock is FreeCAD's model-based stock, with `ExtZneg` set to
+   the selected Job's stock thickness, or to 1 mm below the plug's floor
+   (P − G + S) if that is deeper (my call: FreeCAD's default 1 mm board made
+   the simulator cut through it). The user sets the real plug wood's
+   thickness; the README says it must be at least P − G + S plus a safe base.
 5. The dialog also has a **Ridge pass** checkbox (on), see *The flat tip*.
 
 **Defaults that fit the bit** (my call): `P = min(3 mm, 0.6 · cone height)`,

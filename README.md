@@ -103,9 +103,9 @@ that material off. The plug op must use the same V-bit as the pocket op, and P �
 the V-bit's cone height.
 
 **Z and stock.** Zero Z on the real top of the plug wood, carefully: an error of e makes the letters
-e taller. Set the plug Job's stock to the real wood thickness, at least P − G + S plus a safe base. On
-a fresh inlay the plug op warns that the plug stock is thinner than P − G + S. That is expected until
-you set the stock. In *Stock* mode the end mill clears the floor out to the stock edge, so the stock must extend past the plug's outline (the mirrored design grown by the V-bit's flat radius) by at least the end mill diameter. FreeCAD's default 1 mm stock margins are narrower, so the end mill cannot cut the strip: the clearance op logs "no floor reachable by the end mill" (a warning) and the plug op warns that the stock margin is narrower than the end mill, with the advice to set the plug Job's stock to the real board size. The V-bit rest pass then clears the strip and, as its path is not clipped to the stock, runs out to the stock edge and a little past it, through air.
+e taller. The plug Job's stock starts as thick as your Job's stock, or 1 mm deeper than
+the plug's floor (P − G + S) if that board is too thin; set it to the real plug wood afterwards. The plug
+op warns when the stock is thinner than P − G + S. In *Stock* mode the end mill clears the floor out to the stock edge, so the stock must extend past the plug's outline (the mirrored design grown by the V-bit's flat radius) by at least the end mill diameter. FreeCAD's default 1 mm stock margins are narrower, so the end mill cannot cut the strip: the clearance op logs "no floor reachable by the end mill" (a warning) and the plug op warns that the stock margin is narrower than the end mill, with the advice to set the plug Job's stock to the real board size. The V-bit rest pass then clears the strip and, as its path is not clipped to the stock, runs out to the stock edge and a little past it, through air.
 
 **Model view.** The plug Job's model shows the unmirrored design; the op mirrors it (about `MirrorAxis`)
 when it makes the path.
