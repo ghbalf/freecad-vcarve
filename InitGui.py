@@ -13,6 +13,10 @@ _COMMANDS = [
      QT_TRANSLATE_NOOP("CAM_VCarveClearance", "Clear the flat floor of a V-carve operation with an end mill")),
     ("CAM_VCarvePair", "vcarve_pair.svg", QT_TRANSLATE_NOOP("CAM_VCarvePair", "V-Carve Pair"),
      QT_TRANSLATE_NOOP("CAM_VCarvePair", "Create a clearance op and a V-carve op for the selected sketches")),
+    ("CAM_VCarvePlug", "vcarve_plug.svg", QT_TRANSLATE_NOOP("CAM_VCarvePlug", "V-Carve Plug"),
+     QT_TRANSLATE_NOOP("CAM_VCarvePlug", "Carve the mirrored plug of a V-carve pocket")),
+    ("CAM_VCarveInlay", "vcarve_inlay.svg", QT_TRANSLATE_NOOP("CAM_VCarveInlay", "V-Carve Inlay"),
+     QT_TRANSLATE_NOOP("CAM_VCarveInlay", "Set up a V-carve inlay: the pocket in this Job and the plug in a new Job")),
 ]
 
 

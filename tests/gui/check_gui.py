@@ -4,6 +4,7 @@ Prints GUI-CHECK-OK and exits 0 on success; prints the traceback and exits 1 oth
 import os
 import sys
 import tempfile
+import types
 import traceback
 
 import FreeCAD as App
@@ -12,7 +13,7 @@ from PySide import QtCore, QtGui
 
 # The addon link made by tests/test_gui.py; gives the test helpers without relying on __file__.
 sys.path.insert(0, os.path.join(os.environ["FREECAD_USER_HOME"], "Mod", "freecad-vcarve", "tests", "fc"))
-NAMES = ["CAM_VCarveFlat", "CAM_VCarveClearance", "CAM_VCarvePair"]
+NAMES = ["CAM_VCarveFlat", "CAM_VCarveClearance", "CAM_VCarvePair", "CAM_VCarvePlug", "CAM_VCarveInlay"]
 
 
 def toolbar_entries(title):
@@ -151,6 +152,36 @@ def main():
     check_icons(ops)
     for op in ops:
         edit(op)
+
+    from vcarve_flat.gui import inlay_dialog, panels
+    Gui.Selection.clearSelection()
+    warnings[:] = []
+    Gui.runCommand("CAM_VCarveInlay")
+    assert len(warnings) == 1 and len(PathUtils.GetJobs()) == 1, warnings
+    seen = []
+    inlay_dialog.InlayDialog.exec_ = lambda self: seen.append(self.values()) or QtGui.QDialog.Accepted
+    Gui.Selection.addSelection(doc.getObject("Letters"))
+    Gui.runCommand("CAM_VCarveInlay")
+    QtGui.QApplication.processEvents()
+    assert len(warnings) == 1 and len(seen) == 1, warnings
+    assert set(seen[0]) == {"vtc", "etc", "pocket_depth", "glue_gap", "boundary", "ridge"}, seen
+    jobs = PathUtils.GetJobs()
+    assert len(jobs) == 2, [j.Label for j in jobs]
+    pclr, plug = jobs[1].Operations.Group
+    check_icons([pclr, plug])
+    assert plug.PocketOp is not None
+    page = types.SimpleNamespace(job=jobs[1])
+    assert plug in panels.ClearanceOpPage._vcarve_ops(page), "clearance combo omits the plug op"
+
+    pocket = plug.PocketOp
+    plug.Active = False  # its recompute is slow and not under test
+    plug.ViewObject.Document.setEdit(plug.ViewObject, 0)
+    assert any(isinstance(p, panels.PlugOpPage) for p in plug.ViewObject.Proxy.panel.featurePages)
+    for p in plug.ViewObject.Proxy.panel.featurePages:
+        p.setDirty()
+    plug.ViewObject.Proxy.panel.accept()
+    QtGui.QApplication.processEvents()
+    assert plug.PocketOp == pocket, "OK lost PocketOp"
 
     job = PathUtils.GetJobs()[0]  # last: after its panel, 1.0.2 hangs closing the next one
     job.ViewObject.Document.setEdit(job.ViewObject, 0)  # its Setup tab lists the registered ops' defaults

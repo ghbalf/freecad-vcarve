@@ -5,6 +5,7 @@ import Path.Tool.Controller
 
 from . import op_clearance, op_plug
 from .compat import tool_shape
+from .geom import surface_gap
 from .op_vcarve import tool_vbit
 
 _COPIED = ("ToolNumber", "HorizFeed", "VertFeed", "HorizRapid", "VertRapid", "SpindleSpeed", "SpindleDir")
@@ -38,7 +39,7 @@ def create_inlay(job, sketch, vtc, etc, pocket_depth, glue_gap, boundary="Margin
         raise ValueError(f"The sketch {sketch.Label} is not in the Job {job.Label}")
     original = clone.Objects[0]
     doc = job.Document
-    cone = tool_vbit(vtc).cone_height
+    vbit = tool_vbit(vtc)
 
     pocket = op_clearance.create_pair(job, vtc, etc)
     pocket[1].BaseShapes = [clone]
@@ -57,7 +58,7 @@ def create_inlay(job, sketch, vtc, etc, pocket_depth, glue_gap, boundary="Margin
     clr, plug = plug_pair
     plug.PocketOp = pocket[1]
     plug.GlueGap = glue_gap
-    plug.SurfaceGap = min(1.5, cone - (pocket_depth - glue_gap))
+    plug.SurfaceGap = surface_gap(vbit, pocket_depth, glue_gap)
     plug.PlugBoundary = boundary
     plug.RidgePass = ridge
     clr.Proxy.opUpdateDepths(clr)

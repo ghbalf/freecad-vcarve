@@ -55,12 +55,15 @@ def pass_depths(final: float, step: float) -> list:
     return [step * i for i in range(1, n + 1)] + [final]
 
 
+def surface_gap(vbit: VBit, pocket_depth: float, glue_gap: float) -> float:
+    """The plug's Surface Gap create_inlay sets: 1.5 mm, less where the cone is too short."""
+    return min(1.5, vbit.cone_height - (pocket_depth - glue_gap))
+
+
 def inlay_defaults(vbit: VBit) -> tuple:
     """(pocket depth P, glue gap G, surface gap S) that fit the bit's cone."""
-    cone = vbit.cone_height
-    p = min(3.0, 0.6 * cone)
-    g = 0.2
-    return p, g, min(1.5, cone - (p - g))
+    p = min(3.0, 0.6 * vbit.cone_height)
+    return p, 0.2, surface_gap(vbit, p, 0.2)
 
 
 def plug_errors(vbit: VBit, pocket_depth: float, glue_gap: float, surface_gap: float) -> list:
