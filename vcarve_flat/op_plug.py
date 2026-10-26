@@ -15,7 +15,7 @@ import PathScripts.PathUtils as PathUtils
 from . import op_vcarve
 from .clearing import area_offset, inside_loops, intersect, mirror_faces, subtract, union
 from .geom import flat_radius, pass_depths, plug_errors
-from .medial import face_loops, has_narrow_gap, ridge_polylines
+from .medial import corner_valleys, face_loops, has_narrow_gap, ridge_polylines
 from .sketches import SketchError
 
 _GROUP = "V-Carve Plug"
@@ -85,7 +85,8 @@ class ObjectVCarvePlug(op_vcarve.ObjectVCarveFlat):
             r = op_vcarve.rest_clearance(op_vcarve.find_clearance_op(obj)).x
             return [Part.makePlane(bb.XLength + 2 * r, bb.YLength + 2 * r,
                                    App.Vector(bb.XMin - r, bb.YMin - r, design[0].BoundBox.ZMin))]
-        return area_offset(design, obj.SurfaceGap.Value * math.tan(vbit.half_angle) + obj.PlugMargin.Value)
+        ring = area_offset(design, obj.SurfaceGap.Value * math.tan(vbit.half_angle) + obj.PlugMargin.Value)
+        return union([Part.Face(f.OuterWire) for f in ring])  # a counter is the plug's, however wide
 
     def _limit(self, obj, faces) -> list:
         if self._last is None or not all(any(f is c for c in self._last[0]) for f in faces):
@@ -127,14 +128,18 @@ class ObjectVCarvePlug(op_vcarve.ObjectVCarveFlat):
 
     def extra_paths(self, obj) -> list:
         errors, vbit, start = self._checks(obj)
-        if errors or not obj.RidgePass:
+        if errors:
             return []
         z_v = obj.StartDepth.Value - start
         try:
-            return [p for f in self._design(obj)
-                    for p in ridge_polylines(f, vbit, z_v, start, deflection=obj.Discretize,
-                                             colinear_deg=obj.Colinear, step=obj.StepLength.Value,
-                                             tol=obj.Tolerance.Value)]
+            design = self._design(obj)
+            paths = corner_valleys(design, vbit, z_v, start)
+            if obj.RidgePass:
+                paths += [p for f in design
+                          for p in ridge_polylines(f, vbit, z_v, start, deflection=obj.Discretize,
+                                                   colinear_deg=obj.Colinear, step=obj.StepLength.Value,
+                                                   tol=obj.Tolerance.Value)]
+            return paths
         except Exception as exc:
             Path.Log.error(f"{obj.Label}: ridge pass failed ({exc})")
             return []

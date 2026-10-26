@@ -46,7 +46,9 @@ reported too; set a flat depth to clear them.
 
 **Sharp corners.** The V-bit's wall pass around a flat floor runs into each inner corner of the
 floor outline instead of circling it, so the cone leaves the wood's corner sharp down to the floor
-(the plug's letter corners too). The floor's own corners keep only the V-bit's tip radius.
+(the plug's letter corners too). The floor's own corners keep only the V-bit's tip radius. Such a
+corner leaves a sharp ridge in the pocket, so the plug op cuts the matching valley: a straight pass
+down the bisector of each of the design's inner corners.
 
 **Clearance.** The clearance op's `VCarveOp` property links it to the V-carve op (Pair does this
 for you); it cuts the floor with the end mill, using `PocketPattern`, `StepOver` and `Allowance`.
@@ -118,7 +120,7 @@ Plug operation (group "V-Carve Plug"):
 | `GlueGap` | 0.2 mm | Gap between plug top and pocket floor when seated |
 | `SurfaceGap` | set by the command: min(1.5 mm, cone height − (P − G)) | Gap between plug board and board surface when seated (the plug's flat depth S) |
 | `RidgePass` | on | Flatten the plug's narrow ridges for a tipped V-bit |
-| `PlugMargin` | 10 mm | Margin mode: width of the flat ring cleared around the plug; its width beyond the V-bit tip radius must be at least the end mill diameter |
+| `PlugMargin` | 10 mm | Margin mode: width of the flat ring cleared around the plug (counters are cleared whole, however wide); its width beyond the V-bit tip radius must be at least the end mill diameter |
 | `PlugBoundary` | Margin | Margin: a ring around the plug; Stock: the whole stock of the plug Job |
 | `MirrorAxis` | X | X flips left-right, Y flips front-back, about the design's bounding-box centre |
 | `PlugStartDepth` | read-only | P − G |

@@ -149,6 +149,11 @@ P is the pocket depth, G the glue gap, S the surface gap.
   made the cone round that corner down to the floor (radius about r_flat).
   A mitred offset lies inside the round one, so it never gouges. Strokes
   narrower than the floor, cut along the medial axis, stay rounded.
+  The pocket's sharp inner corner is a ridge along the corner's bisector
+  (its points at depth d lie d·t / sin(a/2) out, a the outside's angle); the
+  seated plug needs the valley that mirrors it, which no medial path cuts. The
+  plug op adds one straight pass per inner corner of the mirrored design, from
+  that point at the plug top down to the corner at `Z_v`, ridge pass or not.
 - **The tool above `Z_v`.** v1 clamps the medial depth at 0 (the carve
   surface). On the plug the carve surface is below the stock top, so the
   plug's carve lets the depth go negative, down to the plug top
@@ -187,7 +192,7 @@ P is the pocket depth, G the glue gap, S the surface gap.
   | `RidgePass` | on | Flatten the plug's narrow ridges for a tipped V-bit (see *The flat tip*) |
   | `PlugBoundary` | chosen in the dialog | `Margin`: a ring around the plug; `Stock`: the whole stock of the plug Job. **A choice for the user (user decision)**; the dialog preselects Margin (my call) |
   | `MirrorAxis` | X | X: flip left–right; Y: flip front–back. Mirrored about the design's bounding-box center |
-  | `PlugMargin` | 10 mm | Margin mode: width of the flat ring cleared around the plug's footprint at the floor (the design offset outward by S·t); the floor starts r_t beyond the plug wall, so the ring is PlugMargin − r_t wide |
+  | `PlugMargin` | 10 mm | Margin mode: width of the flat ring cleared around the plug's footprint at the floor (the design offset outward by S·t, holes filled: a counter is the plug's, however wide); the floor starts r_t beyond the plug wall, so the ring is PlugMargin − r_t wide |
 
   In Margin mode (my call) the outer edge of the ring is a **straight
   end-mill wall, not a V-wall**: the V-bit carves only the letter walls, and

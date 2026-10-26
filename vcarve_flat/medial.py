@@ -8,7 +8,7 @@ import Path
 from Path.Op.Vcarve import (BORDERLINE, COLINEAR, EXTERIOR1, EXTERIOR2, PRIMARY, SECONDARY, TWIN,
                             _collectVoronoiWires)
 
-from .clearing import offset_faces
+from .clearing import inner_corners, offset_faces
 from .geom import (depth_for_radius, distances_to_segments, drop_collinear, drop_floor_runs, flat_radius,
                    insert_crossings, narrow_points, simplify)
 
@@ -112,6 +112,18 @@ def ridge_polylines(face, vbit, z_base, height, *, deflection, colinear_deg, ste
         path = np.column_stack([xy, -(z_base + up)])  # z negated: drop_floor_runs drops runs at/below a floor
         paths += [p * [1, 1, -1] for p in drop_floor_runs(path, -(z_base + height))]
     return [simplify(p, tol) for p in paths]
+
+
+def corner_valleys(faces, vbit, z_base, height) -> list:
+    """The plug's valleys mirroring the ridges a sharp inner corner leaves in the pocket: down each inner
+    corner's bisector from the plug top z_base + height to the corner at z_base. The pocket's ridge
+    point at depth d below its top lies d t / sin(a/2) along the bisector (a: the outside's angle)."""
+    paths = []
+    for c, u in inner_corners(faces):
+        m = (u[0] + u[1]).normalize()
+        top = c - m * (height * math.tan(vbit.half_angle) / math.sqrt((1 - u[0].dot(u[1])) / 2))
+        paths.append(np.array([(top.x, top.y, z_base + height), (c.x, c.y, z_base)]))
+    return paths
 
 
 def has_narrow_gap(face, radius, *, deflection, colinear_deg, step) -> bool:
