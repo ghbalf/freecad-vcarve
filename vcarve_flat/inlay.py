@@ -35,7 +35,8 @@ def _new_job(src, sketch, label, tcs):
     doc = src.Document
     job = Path.Main.Job.Create(label, [sketch], None)
     job.Label = label
-    for tc in list(job.Tools.Group):
+    for tc in list(job.Tools.Group):  # the default one; onDelete removes its tool bit, as the GUI does
+        tc.Proxy.onDelete(tc)
         doc.removeObject(tc.Name)
     copies = [_copy_tc(doc, tc) for tc in tcs]
     for tc in copies:

@@ -39,6 +39,9 @@ class InlayTests(unittest.TestCase):
         qjob, (pclr, pvc), pjob, (clr, plug) = self.build()
         jobs = [o for o in self.doc.Objects if hasattr(o, "Operations")]
         self.assertEqual(len(jobs), 3)
+        # Job.Create's default tool controller goes, and its tool bit with it
+        self.assertEqual(sorted(o.Name for o in self.doc.Objects if not o.InList),
+                         sorted(o.Name for o in jobs))
         self.assertEqual((list(self.job.Operations.Group), list(self.job.Tools.Group)), (ops, tools))
         self.assertEqual((qjob.Label, pjob.Label), ("Letters Pocket", "Letters Plug"))
         for job in (qjob, pjob):
