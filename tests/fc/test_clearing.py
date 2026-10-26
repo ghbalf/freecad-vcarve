@@ -116,6 +116,14 @@ class TestRestChain(unittest.TestCase):
         got = area(intersect(swept_faces(region, 1, 0), rest_faces(self.floor, [(3, 0)])))
         self.assertGreaterEqual(got, 0.9 * want)
 
+    def test_rest_region_with_allowance(self):
+        # The V-bit counts the rest op's whole sweep as cleared, so the pocket of rest_region must cut all of it
+        tools, r, a = [(3, 0)], 1, 0.5
+        assumed = intersect(swept_faces(self.floor, r, a), rest_faces(self.floor, tools))
+        cut = swept_faces(rest_region(self.floor, tools, r, a), r, a)
+        # grown past Path.Area's arc re-fit (0.02 mm): without the allowance in the growth, 0.47 mm^2 stayed
+        self.assertLess(area(subtract(assumed, area_offset(cut, 0.05))), 1e-4)
+
     def test_rest_region_empty(self):
         circle = [Part.Face(Part.Wire(Part.makeCircle(5)))]
         self.assertEqual(rest_region(circle, [(3, 0)], 1), [])

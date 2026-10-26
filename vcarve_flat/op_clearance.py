@@ -80,8 +80,9 @@ class ObjectVCarveClearance(PathOp.ObjectOp):
         obj.setEditorMode("StepDown", 2)
 
     def opOnChanged(self, obj, prop):
-        # Fires during creation and restore, before the properties exist.
-        if prop not in ("ToolController", "Allowance", "RestOnly", "VCarveOp", "Active") or "Restore" in obj.State:
+        # Fires during creation and restore, before the properties exist. RestOnly is left out: it changes
+        # neither the V-carve op's rest area nor the later ops' (see chain_key).
+        if prop not in ("ToolController", "Allowance", "VCarveOp", "Active") or "Restore" in obj.State:
             return
         if prop == "ToolController":
             op_vcarve.check_tool_controller(obj)
@@ -149,9 +150,10 @@ class ObjectVCarveClearance(PathOp.ObjectOp):
             if isinstance(faces, SketchError):
                 continue  # the V-carve op logs it
             try:
-                cut = [pocket_polylines(rest_region(link.Proxy.floor(link, cs, faces), tools, radius), radius,
-                                        stepover, obj.PocketPattern, obj.Allowance.Value, cs.z_top - cs.depth,
-                                        link.Discretize)
+                cut = [pocket_polylines(rest_region(link.Proxy.floor(link, cs, faces), tools, radius,
+                                                    obj.Allowance.Value),
+                                        radius, stepover, obj.PocketPattern, obj.Allowance.Value,
+                                        cs.z_top - cs.depth, link.Discretize)
                        for cs in levels]
             except Exception as exc:
                 Path.Log.error(f"{label}: end mill floor clearing failed ({exc})")

@@ -161,15 +161,15 @@ def rest_faces(floor, tools) -> list:
     return rest
 
 
-def rest_region(floor, tools, tool_radius: float) -> list:
-    """The region an end mill of tool_radius pockets after tools: the leftovers grown by its
-    diameter, so that its sweep reaches them, kept inside floor."""
+def rest_region(floor, tools, tool_radius: float, allowance: float = 0.0) -> list:
+    """The region an end mill of tool_radius pockets after tools, keeping allowance from its edge: the
+    leftovers grown by its diameter plus allowance, so that its sweep reaches them, kept inside floor."""
     if not tools:
         return list(floor)
     # Path.Area re-fits arcs up to 0.02 mm off and leaves hairlines where the sweep meets the wall:
     # shrinking by that much drops them
     rest = offset_faces(rest_faces(floor, tools), -_ARC_FIT_TOL)
-    return intersect(offset_faces(rest, 2 * tool_radius + _ARC_FIT_TOL), floor) if rest else []
+    return intersect(offset_faces(rest, 2 * tool_radius + allowance + _ARC_FIT_TOL), floor) if rest else []
 
 
 def subtract(a, b) -> list:

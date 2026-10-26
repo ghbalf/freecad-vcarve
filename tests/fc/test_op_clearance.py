@@ -188,6 +188,7 @@ class ClearanceTests(unittest.TestCase):
             App.closeDocument(self.doc.Name)
             self.doc = App.openDocument(path)
         clr, vc = (self.doc.getObject(n) for n in names)
+        self.assertEqual([o.Name for o in (clr, vc) if "Touched" in o.State], [])  # adding RestOnly touches nothing
         self.assertFalse(clr.RestOnly)
         self.assertFalse(hasattr(vc, "RestClearance"))
         for op in (clr, vc):
