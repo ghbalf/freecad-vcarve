@@ -5,6 +5,7 @@ import unittest
 import FreeCAD as App
 import numpy as np
 import Part
+import Path
 
 from vcarve_flat.clearing import offset_faces, pocket_polylines, subtract, swept_faces
 from vcarve_flat.geom import VBit, depth_for_radius, distances_to_segments
@@ -161,6 +162,35 @@ class ClearingTests(unittest.TestCase):
             self.assertTrue(pts, d)
             err = max(abs(math.hypot(p.x - 10, p.y - 10) - (4 - d)) for p in pts)
             self.assertLess(err, 1e-6, d)
+
+    def test_offset_keeps_occ_whole_face(self):
+        # Offsetting wire by wire gave other loop orders and start points than OCC's whole-face offset,
+        # which changed v1 paths where that offset was right
+        def octagon(r):
+            return [(r * math.cos(k * math.pi / 4 + 0.3), r * math.sin(k * math.pi / 4 + 0.3)) for k in range(8)]
+        cases = {"frame": [[(0, 0), (20, 0), (20, 20), (0, 20)], [(3, 3), (17, 3), (17, 17), (3, 17)]],
+                 "nested": [[(0, 0), (40, 0), (40, 40), (0, 40)], [(6, 6), (34, 6), (34, 34), (6, 34)],
+                            [(12, 12), (28, 12), (28, 28), (12, 28)]],
+                 "O": [octagon(10), octagon(6)]}
+        checked = 0
+        for name, loops in cases.items():
+            wires = [Part.makePolygon([V(x, y, 0) for x, y in pts + pts[:1]]) for pts in loops]
+            faces = faces_from_loops(name, wires)
+            for d in (-1.2, -0.3, 0.6):
+                whole = [g for f in faces for g in f.makeOffset2D(d, join=0).Faces]
+                area = Path.Area()
+                for f in faces:
+                    area.add(f)
+                ref = area.makeOffset(offset=d).Faces
+                if sorted(len(f.Wires) for f in whole) != sorted(len(f.Wires) for f in ref) \
+                        or abs(sum(f.Area for f in whole) - sum(f.Area for f in ref)) > 0.05:
+                    continue  # this FreeCAD's makeOffset2D is wrong here (1.0)
+                checked += 1
+                got = offset_faces(faces, d)
+                self.assertEqual([[v.Point for w in f.Wires for v in w.OrderedVertexes] for f in got],
+                                 [[v.Point for w in f.Wires for v in w.OrderedVertexes] for f in whole], (name, d))
+        if not checked:
+            self.skipTest("makeOffset2D is wrong for faces with holes in this FreeCAD")
 
     def test_offset_zero(self):
         self.assertEqual(offset_faces([RECT], 0), [RECT])

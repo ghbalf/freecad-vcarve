@@ -22,23 +22,38 @@ def _split_circles(wire):
 
 
 def _occ_offset(face, distance: float) -> list:
-    """OCC offset of face, one wire at a time: makeOffset2D gets faces with holes wrong (1.0 drops
-    or shrinks the holes, 1.1 returns a circular hole as a face of its own). Offsetting the outer
-    region by distance and cutting the holes offset by -distance is the same offset."""
+    """OCC offset of face. makeOffset2D gets some faces with holes wrong (1.0 drops or shrinks the
+    holes, 1.1 returns a circular hole as a face of its own), so it is checked against the offset done
+    one wire at a time: the outer region offset by distance, minus the holes offset by -distance. The
+    whole-face result is kept where they agree (its loop order and start points are v1's)."""
     if not isinstance(face, Part.Face):
         return face.makeOffset2D(distance, join=0).Faces
 
-    def offset(wire, d):
+    def offset(f, d):
         try:
-            return Part.Face(_split_circles(wire)).makeOffset2D(d, join=0).Faces
+            return f.makeOffset2D(d, join=0).Faces
         except App.Base.CADKernelError as exc:
             if "no wires" in str(exc):
                 return []  # vanished
             raise
 
-    outer = offset(face.OuterWire, distance)
-    holes = [f for w in face.Wires if not w.isSame(face.OuterWire) for f in offset(w, -distance)]
-    return subtract(outer, holes)
+    try:
+        whole = offset(face, distance)
+    except (App.Base.CADKernelError, ValueError):
+        whole = None
+    try:
+        outer = offset(Part.Face(_split_circles(face.OuterWire)), distance)
+        holes = [g for w in face.Wires if not w.isSame(face.OuterWire)
+                 for g in offset(Part.Face(_split_circles(w)), -distance)]
+        per_wire = subtract(outer, holes)
+    except (App.Base.CADKernelError, ValueError):
+        if whole is None:
+            raise
+        return whole
+    if whole is not None and sorted(len(f.Wires) for f in whole) == sorted(len(f.Wires) for f in per_wire) \
+            and abs(sum(f.Area for f in whole) - sum(f.Area for f in per_wire)) <= 1e-3 * face.Length:
+        return whole
+    return per_wire
 
 
 def offset_faces(faces, distance: float) -> list:
