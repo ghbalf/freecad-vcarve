@@ -202,6 +202,9 @@ def main():
         for op in j.Operations.Group:
             want = "Endmill" if hasattr(op, "VCarveOp") else "VBit"
             assert tool_shape(op.ToolController.Tool) == want, f"{j.Label}/{op.Label}: {op.ToolController.Label}"
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(jobs[1].Model.Group[0])  # the plug Job's clone picks the plug Job
+    assert commands._find_job() == jobs[1], commands._find_job().Label
     pclr, plug = jobs[1].Operations.Group
     new_ops = [*jobs[0].Operations.Group[-2:], pclr, plug]
     assert all(abs(op.StepDown.Value - 1.5) < 1e-9 for op in new_ops), [op.StepDown for op in new_ops]

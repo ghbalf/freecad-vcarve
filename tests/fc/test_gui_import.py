@@ -35,3 +35,10 @@ class GuiImportTests(unittest.TestCase):
         self.assertEqual(shapes, [cs])  # originals map to clones, no duplicates
         # edges of a whole-shape entry are dropped (no loop carved twice), subs merged per clone
         self.assertEqual(base, [(ct, ("Edge1", "Edge2", "Edge3"))])
+
+    def test_job_clone_ignores_other_jobs(self):
+        from vcarve_flat.gui.selection import job_clone
+        other, _ = make_job(self.doc, [self.sketches[0]])
+        self.assertEqual(job_clone(self.job, self.sketches[0]), self.clone)
+        self.assertEqual(job_clone(self.job, self.clone), self.clone)
+        self.assertIsNone(job_clone(self.job, other.Model.Group[0]))  # FreeCAD's resourceClone returns it

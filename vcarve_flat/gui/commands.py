@@ -54,7 +54,7 @@ def _find_job():
     jobs = PathUtils.GetJobs()
     for sel in Gui.Selection.getSelection():
         for job in jobs:
-            if job.Proxy.resourceClone(job, sel) or PathUtils.findParentJob(sel) == job:
+            if selection.job_clone(job, sel) or PathUtils.findParentJob(sel) == job:
                 return job
     if len(jobs) == 1:
         return jobs[0]
@@ -96,7 +96,7 @@ def _add_selection(op, job):
     are reported in one warning each."""
     shapes, skipped, no_edges = list(op.BaseShapes), [], []
     for sel in Gui.Selection.getSelectionEx():
-        model = job.Proxy.resourceClone(job, sel.Object)
+        model = selection.job_clone(job, sel.Object)
         if model is None or not is_sketch_base(model):
             skipped.append(sel.Object.Label)
             continue
@@ -155,7 +155,8 @@ class _InlayCommand:
         if job is None:
             return
         selected = Gui.Selection.getSelection()
-        if len(selected) != 1 or not is_sketch_base(job.Proxy.resourceClone(job, selected[0]) or selected[0]):
+        clone = selection.job_clone(job, selected[0]) if len(selected) == 1 else None
+        if clone is None or not is_sketch_base(clone):
             _warn(translate("CAM_VCarve", "Select exactly one sketch of the Job"))
             return
         tcs = job.Tools.Group
@@ -170,7 +171,7 @@ class _InlayCommand:
         doc = App.ActiveDocument
         doc.openTransaction("Create V-Carve Inlay")
         try:
-            pocket, plug_job, plug = inlay.create_inlay(job, selected[0], **dialog.values())
+            pocket, plug_job, plug = inlay.create_inlay(job, clone, **dialog.values())
             plug_job.ViewObject.Proxy = JobGui.ViewProvider(plug_job.ViewObject)  # as JobGui.Create
             plug_job.ViewObject.addExtension("Gui::ViewProviderGroupExtensionPython")
             plug_job.ViewObject.Proxy.deleteOnReject = False

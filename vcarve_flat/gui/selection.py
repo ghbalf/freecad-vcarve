@@ -8,11 +8,18 @@ class SketchGate:
         return is_sketch_base(obj) and (not sub or sub.startswith("Edge"))
 
 
+def job_clone(job, obj):
+    """obj's clone in job's Model, obj itself if it is one, else None. FreeCAD's resourceClone
+    also returns another Job's clone as it is."""
+    clone = job.Proxy.resourceClone(job, obj)
+    return clone if clone in job.Model.Group else None
+
+
 def to_clones(job, shapes, base):
     """Map BaseShapes and Base entries to the Job's clones without carving a loop twice:
     shapes are deduplicated, edge lists merged per clone, and edges of a whole shape dropped."""
     def clone(o):
-        return job.Proxy.resourceClone(job, o) or o
+        return job_clone(job, o) or o
 
     out_shapes, merged = [], {}
     for o in map(clone, shapes):
