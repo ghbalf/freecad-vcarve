@@ -9,18 +9,39 @@ _POCKET_MODE = {"ZigZag": 4, "Offset": 2}  # Path.Area: 4 = ZigZagOffset (zigzag
 
 
 def offset_faces(faces, distance: float) -> list:
-    """Offset each face; a feature that vanishes (too narrow) yields no face. Other offset
-    failures propagate, so the caller reports them with the sketch's name."""
-    if distance == 0:
-        return faces
-    out = []
+    """Offset faces by distance (positive outward); a feature that vanishes (too narrow) yields no
+    face. OCC's makeOffset2D keeps arcs exact but mishandles annuli of full circles (1.1 returns
+    the counter, 1.0 shrinks the hole) and fails on some faces ("Wire is not closed"); Path.Area
+    gets those right but re-fits arcs up to 0.02 mm off. So the OCC result is used when it agrees
+    with Path.Area (same face count, area within 0.05 mm times the input perimeter), else the
+    Path.Area one. When both fail the OCC error propagates, so the caller reports it with the
+    sketch's name."""
+    if not faces or distance == 0:
+        return list(faces)
+    occ, occ_error = [], None
     for face in faces:
         try:
-            out += face.makeOffset2D(distance, join=0).Faces
+            occ += face.makeOffset2D(distance, join=0).Faces
         except App.Base.CADKernelError as exc:
             if "no wires" not in str(exc):
-                raise
-    return out
+                occ_error = exc
+        except ValueError as exc:
+            occ_error = exc
+    try:
+        area = Path.Area()
+        for face in faces:
+            area.add(face)
+        ref = area.makeOffset(offset=distance).Faces
+    except Exception:
+        if occ_error:
+            raise occ_error from None
+        return occ
+    if occ_error:
+        return ref
+    tol = 0.05 * sum(face.Length for face in faces)
+    if len(occ) == len(ref) and abs(sum(f.Area for f in occ) - sum(f.Area for f in ref)) <= tol:
+        return occ
+    return ref
 
 
 def swept_faces(floor, tool_radius: float, allowance: float) -> list:
@@ -63,15 +84,7 @@ def pocket_polylines(faces, tool_radius, stepover, pattern, extra_offset, z, def
     return out
 
 
-def area_offset(faces, distance: float) -> list:
-    """Offset faces by distance (positive outward) with Path.Area, which copes with holes in both
-    directions; a result that vanishes gives []."""
-    if not faces or distance == 0:
-        return list(faces)
-    area = Path.Area()
-    for face in faces:
-        area.add(face)
-    return area.makeOffset(offset=distance).Faces
+area_offset = offset_faces  # the plug ops' name for it
 
 
 def union(faces) -> list:

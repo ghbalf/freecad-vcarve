@@ -106,6 +106,21 @@ class OpVCarveTests(unittest.TestCase):
         self.assertAlmostEqual(op.Path.BoundBox.ZMin, -self.vbit.cone_height, delta=0.05)
         self.assertTrue(self.logged(self.warn, "100"), self.warn.call_args_list)
 
+    def test_ring_of_circles(self):
+        """OCC's inward offset of an annulus of full circles returns the counter (1.1) or shrinks the hole
+        (1.0); the walls and the floor must still be the annulus."""
+        (ring,) = self.job_with(make_sketch(self.doc, "Ring", [], circles=RING))
+        op = self.make_op([ring], FlatDepth=1.0)
+        pts = cut_points(op)
+        r = np.hypot(pts[:, 0] - 70, pts[:, 1] - 10)
+        self.assertGreater(r.min(), 4 - 1e-6)  # the counter stays uncut
+        self.assertLess(r.max(), 10 + 1e-6)
+        rr = r[np.abs(pts[:, 2] + 1) < 1e-6]
+        rf = flat_radius(self.vbit, 1.0)
+        self.assertLess(np.abs(rr - (10 - rf)).min(), 0.02)  # the outer wall loop
+        self.assertLess(np.abs(rr - (4 + rf)).min(), 0.02)  # the inner wall loop
+        self.assertTrue(((rr > 4 + rf + 0.5) & (rr < 10 - rf - 0.5)).any())  # the floor
+
     def test_only_listed(self):
         _, ring = self.job_with(make_sketch(self.doc, "Rect", [RECT]),
                                 make_sketch(self.doc, "Ring", [], circles=RING))
