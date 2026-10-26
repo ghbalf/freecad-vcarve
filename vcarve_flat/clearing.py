@@ -8,20 +8,52 @@ import Path
 _POCKET_MODE = {"ZigZag": 4, "Offset": 2}  # Path.Area: 4 = ZigZagOffset (zigzag plus a contour pass)
 
 
+def _split_circles(wire):
+    """wire with each full circle split into two arcs: OCC's makeOffset2D mishandles full circles."""
+    edges = []
+    for e in wire.Edges:
+        if e.isClosed():
+            a, b = e.ParameterRange
+            halves = [Part.Edge(e.Curve, a, (a + b) / 2), Part.Edge(e.Curve, (a + b) / 2, b)]
+            edges += [h.reversed() for h in halves] if e.Orientation == "Reversed" else halves
+        else:
+            edges.append(e)
+    return Part.Wire(Part.__sortEdges__(edges))
+
+
+def _occ_offset(face, distance: float) -> list:
+    """OCC offset of face, one wire at a time: makeOffset2D gets faces with holes wrong (1.0 drops
+    or shrinks the holes, 1.1 returns a circular hole as a face of its own). Offsetting the outer
+    region by distance and cutting the holes offset by -distance is the same offset."""
+    if not isinstance(face, Part.Face):
+        return face.makeOffset2D(distance, join=0).Faces
+
+    def offset(wire, d):
+        try:
+            return Part.Face(_split_circles(wire)).makeOffset2D(d, join=0).Faces
+        except App.Base.CADKernelError as exc:
+            if "no wires" in str(exc):
+                return []  # vanished
+            raise
+
+    outer = offset(face.OuterWire, distance)
+    holes = [f for w in face.Wires if not w.isSame(face.OuterWire) for f in offset(w, -distance)]
+    return subtract(outer, holes)
+
+
 def offset_faces(faces, distance: float) -> list:
     """Offset faces by distance (positive outward); a feature that vanishes (too narrow) yields no
-    face. OCC's makeOffset2D keeps arcs exact but mishandles annuli of full circles (1.1 returns
-    the counter, 1.0 shrinks the hole) and fails on some faces ("Wire is not closed"); Path.Area
-    gets those right but re-fits arcs up to 0.02 mm off. So the OCC result is used when it agrees
-    with Path.Area (same face count, area within 0.05 mm times the input perimeter), else the
-    Path.Area one. When both fail the OCC error propagates, so the caller reports it with the
-    sketch's name."""
+    face. OCC's makeOffset2D keeps arcs exact (see _occ_offset for its faults) but fails on some
+    faces ("Wire is not closed"); Path.Area gets those right but re-fits arcs up to 0.02 mm off.
+    So the OCC result is used when it agrees with Path.Area (same face count, area within 0.05 mm
+    times the input perimeter), else the Path.Area one. When both fail the OCC error propagates,
+    so the caller reports it with the sketch's name."""
     if not faces or distance == 0:
         return list(faces)
     occ, occ_error = [], None
     for face in faces:
         try:
-            occ += face.makeOffset2D(distance, join=0).Faces
+            occ += _occ_offset(face, distance)
         except App.Base.CADKernelError as exc:
             if "no wires" not in str(exc):
                 occ_error = exc

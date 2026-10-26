@@ -148,6 +148,20 @@ class ClearingTests(unittest.TestCase):
         with self.assertRaises(Part.OCCError):
             offset_faces([Failing()], -1)
 
+    def test_offset_keeps_circles(self):
+        # OCC mishandled faces with full circles, and Path.Area re-fits arcs up to 0.023 mm off: the
+        # thin-bar end of the plug collided by 0.026 mm (its complement holds the ring's circle)
+        face = subtract([poly_face([(-5, -5), (45, -5), (45, 25), (-5, 25)])],
+                        [poly_face([(20, 0), (40, 0), (40, 20), (20, 20)]),
+                         Part.Face(Part.Wire(Part.makeCircle(4, V(10, 10, 0))))])
+        hole = App.BoundBox(5, 5, -1, 15, 15, 1)
+        for d in (-0.3, 0.5):
+            pts = [p for f in offset_faces(face, d) for e in f.Edges if hole.isInside(e.BoundBox)
+                   for p in e.discretize(50)]
+            self.assertTrue(pts, d)
+            err = max(abs(math.hypot(p.x - 10, p.y - 10) - (4 - d)) for p in pts)
+            self.assertLess(err, 1e-6, d)
+
     def test_offset_zero(self):
         self.assertEqual(offset_faces([RECT], 0), [RECT])
 
