@@ -91,10 +91,12 @@ def offset_faces(faces, distance: float) -> list:
     return ref
 
 
-def swept_faces(floor, tool_radius: float, allowance: float) -> list:
-    """Area an end mill of tool_radius can reach inside floor, keeping allowance from the walls.
-    Path.Area, like the pocketing: OCC's outward makeOffset2D drops the outer wire of some faces
-    with holes (font letters such as O and B) or fails on them."""
+def rest_faces(floor, tool_radius: float, allowance: float) -> list:
+    """The part of floor an end mill of tool_radius cannot reach, keeping allowance from the walls.
+    The swept area is Path.Area's, like the pocketing: OCC's outward makeOffset2D drops the outer
+    wire of some faces with holes (font letters such as O and B) or fails on them. OCC's exact cut
+    is used unless its area is off (see area_subtract): Path.Area's re-fit arcs can leave slivers just
+    outside the floor, where the V-bit would cut into the wall."""
     if not floor:
         return []
     area = Path.Area()
@@ -102,8 +104,13 @@ def swept_faces(floor, tool_radius: float, allowance: float) -> list:
         area.add(face)
     centres = area.makeOffset(offset=-(tool_radius + allowance))
     if not centres.Faces:
-        return []
-    return Path.Area().add(centres).makeOffset(offset=tool_radius).Faces
+        return floor
+    swept = Path.Area().add(centres).makeOffset(offset=tool_radius).Faces
+    rest = subtract(floor, swept)
+    expected = sum(f.Area for f in floor) - sum(f.Area for f in swept)  # swept lies inside floor
+    if abs(sum(f.Area for f in rest) - expected) > 0.05 * sum(f.Length for f in floor):
+        return area_subtract(floor, swept)
+    return rest
 
 
 def subtract(a, b) -> list:
@@ -112,6 +119,19 @@ def subtract(a, b) -> list:
     if not b:
         return a
     return Part.makeCompound(a).cut(Part.makeCompound(b)).Faces
+
+
+def area_subtract(a, b) -> list:
+    """a minus b with Path.Area: OCC's cut can silently keep a face of a whose outline lies within
+    0.01 mm of b's (a font's plug floor and the area an end mill sweeps in it)."""
+    if not a or not b:
+        return list(a)
+    area = Path.Area()
+    for face in a:
+        area.add(face)
+    for face in b:
+        area.add(face, op=1)
+    return area.getShape().Faces
 
 
 def pocket_polylines(faces, tool_radius, stepover, pattern, extra_offset, z, deflection) -> list:

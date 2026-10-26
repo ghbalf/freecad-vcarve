@@ -9,7 +9,7 @@ import Path.Base.SetupSheet as PathSetupSheet
 import Path.Op.Base as PathOp
 import PathScripts.PathUtils as PathUtils
 
-from .clearing import offset_faces, pocket_polylines, subtract, swept_faces
+from .clearing import offset_faces, pocket_polylines, rest_faces
 from .compat import tool_shape
 from .geom import (VBit, distances_to_segments, flat_radius, limit_depth, order_paths, pass_depths,
                    rest_stepover)
@@ -106,7 +106,7 @@ def rest_clearance(cop) -> App.Vector:
 def _rest_pocket(obj, cs, faces, rc):
     floor = obj.Proxy.floor(obj, cs, faces)
     if rc.x > 0:
-        floor = subtract(floor, swept_faces(floor, rc.x, rc.y))
+        floor = rest_faces(floor, rc.x, rc.y)
     return pocket_polylines(floor, max(cs.vbit.tip_radius, MIN_REST_TOOL_RADIUS),
                             rest_stepover(cs.vbit, obj.RestScallop.Value), "Offset", 0,
                             cs.z_top - cs.depth, obj.Discretize)
