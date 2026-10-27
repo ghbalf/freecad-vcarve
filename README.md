@@ -28,6 +28,7 @@ dropdown, and in the CAM menu after Vcarve:
 - **V-Carve Clearance**: the end-mill operation that clears the flat floor.
 - **V-Carve Pair**: creates both, linked, in one step.
 - **V-Carve Inlay**: sets up a pocket and a matching plug, see below.
+- **Check Inlay Fit**: simulates the seated plug and marks where it collides or leaves a gap, see below.
 
 Workflow:
 
@@ -57,7 +58,11 @@ rest area. With no clearance op the V-bit clears the whole floor, which is slow,
 The V-carve op follows its clearance op: after you change the end mill, `Allowance` or `Active`,
 re-point `VCarveOp`, or delete or reorder clearance ops, the next recompute updates the V-bit rest area
 too (in the same recompute).
-Only one active clearance op per V-carve op is supported; with more, a warning names the one used.
+
+**Rest machining.** The active clearance ops of a V-carve op form a chain, in the Job's order. The first
+clears the floor; each following op with `RestOnly` on and a smaller end mill clears only what the ops
+before it left (corners, narrow areas); the V-bit cleans up the rest. A `RestOnly` op with no clearance op
+before it clears the whole floor, and a warning says so.
 
 ## Properties
 
@@ -81,6 +86,7 @@ Clearance operation (group "V-Carve"):
 | `PocketPattern` | Offset | Clearing pattern: Offset or ZigZag |
 | `StepOver` | 40 % | Stepover as a percentage of the tool diameter |
 | `Allowance` | 0 mm | Distance kept from the floor boundary |
+| `RestOnly` | off | Clear only what the earlier clearance ops of the same V-carve op left; needs a smaller end mill |
 
 ## V-carve inlay
 
@@ -89,6 +95,8 @@ clone in a Job) and run the command. The tool controllers come from the sketch's
 which needs a V-bit and an end mill; that Job itself is not changed. The dialog asks for:
 
 - **V-bit** and **End mill**: the tool controllers to use.
+- **Rest end mill** (optional, *None* by default): a smaller end mill that clears what the end mill left,
+  as a `RestOnly` clearance op after the first one in both Jobs. It must be smaller than the end mill.
 - **Pocket depth** P and **Glue gap** G: the defaults fit the chosen V-bit.
 - **Plug boundary**: *Margin* (saw the plug free inside a ring) or *Stock* (clear the whole plug board,
   which takes longer).
@@ -145,6 +153,25 @@ Pointed V-bits are best for inlays.
 
 **Step-down.** The command sets a 1.5 mm step-down. The clearance op follows the levels of its V-carve
 op (pocket or plug). On the pocket op, `FlatDepth` 0 means no flat floor at all: the clearance op cuts nothing, and the V-bit stops adding step-down levels once a level no longer cuts deeper. The plug op always has a flat floor (it hides `FlatDepth`), and it errors if its pocket op has `FlatDepth` 0.
+
+## Check inlay fit
+
+**Check Inlay Fit** simulates the plug seated in the pocket (flipped, as you would glue it) from the G1
+moves of both Jobs' ops, clearance ops included. Select the plug or pocket op or Job of an inlay and run
+the command. It creates a "`<sketch> Fit`" object with marks just above the pocket: **red** where the plug
+collides with the board (it would not seat) and **blue** where a gap wider than the glue gap is left. The
+summary (worst collision, worst void) goes to the report view. A new check replaces the previous Fit object,
+as one undo step.
+
+The check refuses ops that are touched, invalid or without a toolpath ("recompute it first"). The Fit
+object never simulates again by itself: when the ops' toolpaths change it only marks itself
+"outdated: run Check Inlay Fit". The grid is 0.25 mm, so features smaller than that can be missed.
+
+## Progress and cancel
+
+Ops, V-Carve Inlay and Check Inlay Fit show a progress indicator in the GUI. Press **Esc** to cancel; there
+is no confirmation. A cancelled op keeps an empty path and an error mark (recompute it to try again), a
+cancelled V-Carve Inlay leaves nothing behind, and a cancelled check keeps the old Fit object.
 
 ## Known limitations
 
