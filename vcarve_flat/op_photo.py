@@ -75,6 +75,13 @@ class ObjectVCarvePhoto(PathOp.ObjectOp):
             setattr(obj, name, value)
 
     def opSetDefaultValues(self, obj, job):
+        planes = [o for o in obj.Document.Objects if o.TypeId == "Image::ImagePlane"]
+        if App.GuiUp:
+            import FreeCADGui as Gui
+            chosen = [o for o in Gui.Selection.getSelection() if o in planes]
+            planes = chosen or planes
+        if len(planes) == 1:
+            obj.ImagePlane = planes[0]
         if _is_vbit_tc(obj):
             vbit = tool_vbit(obj.ToolController)
             width = groove_width(vbit, limit_depth(vbit, obj.MaxDepth.Value)[0])
@@ -105,7 +112,8 @@ class ObjectVCarvePhoto(PathOp.ObjectOp):
         except ImageError as exc:
             Path.Log.error(f"{obj.Label}: {exc}")
             return
-        raster = photo.Raster(photo.darkness(rgba, max(obj.Contrast, 0.0), obj.Invert), *size(plane))
+        raster = photo.Raster(photo.darkness(rgba, max(obj.Contrast, 0.0), obj.Invert), *size(plane),
+                              cell=obj.SampleStep.Value)
         vbit = tool_vbit(obj.ToolController)
         depth, capped = limit_depth(vbit, obj.MaxDepth.Value)
         if capped:

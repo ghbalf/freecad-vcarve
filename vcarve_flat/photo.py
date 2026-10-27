@@ -9,23 +9,36 @@ _LUMA = np.array([0.299, 0.587, 0.114])
 
 
 def darkness(rgba: np.ndarray, contrast: float, invert: bool) -> np.ndarray:
-    """Darkness 0 (white) .. 1 (black) of an HxWx3 or HxWx4 uint8 image. Transparent pixels are white;
+    """Darkness 0 (white) .. 1 (black) of an HxWx3 or HxWx4 uint8 image. Transparent pixels are uncut;
     contrast (%) stretches the encoded grey around mid-grey, then the grey is turned into linear light,
     because the grooves darken the surface by the share of it they cover."""
     px = np.asarray(rgba, float) / 255
     grey = px[..., :3] @ _LUMA
-    if px.shape[-1] == 4:
-        grey = grey * px[..., 3] + (1 - px[..., 3])
     grey = np.clip(0.5 + (grey - 0.5) * contrast / 100, 0, 1)
     light = np.where(grey <= 0.04045, grey / 12.92, ((grey + 0.055) / 1.055) ** 2.4)
-    return light if invert else 1 - light
+    rho = light if invert else 1 - light
+    return rho * px[..., 3] if px.shape[-1] == 4 else rho  # transparent stays uncut, inverted or not
+
+
+def _block_mean(a: np.ndarray, factor: int, axis: int) -> np.ndarray:
+    """a averaged over blocks of about factor entries along axis, spread evenly over its length."""
+    size = a.shape[axis]
+    starts = np.arange(max(1, size // factor)) * size // max(1, size // factor)
+    counts = np.diff(np.append(starts, size))
+    return np.add.reduceat(a, starts, axis=axis) / np.expand_dims(counts, 1 - axis)
 
 
 class Raster:
-    """Darkness rho (HxW, row 0 on top) over a width x height mm rectangle centred on the origin."""
+    """Darkness rho (HxW, row 0 on top) over a width x height mm rectangle centred on the origin;
+    with cell (mm), pixels finer than it are averaged into blocks of at most cell, so sampling at that
+    step sees every pixel instead of aliasing fur and grain into depth noise."""
 
-    def __init__(self, rho: np.ndarray, width: float, height: float):
+    def __init__(self, rho: np.ndarray, width: float, height: float, cell: float = 0):
         self.rho = np.asarray(rho, float)
+        for axis, extent in enumerate((height, width)):
+            factor = int(cell * self.rho.shape[axis] / extent + 1e-9) if cell > 0 else 1
+            if factor > 1:
+                self.rho = _block_mean(self.rho, factor, axis)
         self.width, self.height = width, height
 
     def sample(self, uv: np.ndarray) -> np.ndarray:

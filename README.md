@@ -171,9 +171,9 @@ shallow ones or none. It suits light, close-grained hardwood such as maple.
 2. **Prepare it beforehand** in GIMP or similar. Colour images are converted to grey
    (0.299 R + 0.587 G + 0.114 B), but converting yourself gives control over which colours turn dark.
    Raise the contrast there, and paint whatever should stay uncut (the background) pure white;
-   transparent pixels count as white.
-3. Create a CAM Job with a V-bit tool controller, run **V-Carve Photo** and pick the image plane in
-   the task panel.
+   transparent pixels stay uncut, even with `Invert`.
+3. Create a CAM Job with a V-bit tool controller, select the image plane and run **V-Carve Photo**
+   (with a single image plane in the document it is picked anyway; otherwise pick it in the task panel).
 
 Each groove is cut at depth = darkness × `MaxDepth`, where darkness is 0 for white and 1 for black on a
 linear (not sRGB) light scale, so black always reaches `MaxDepth`. The bit lifts out where the depth is
@@ -201,7 +201,7 @@ Patterns (group "V-Carve Photo"):
 | `LineSpacing` | groove width at `MaxDepth` × 1.05, rounded up to 0.1 mm | Distance between lines |
 | `MaxDepth` | 2 mm | Depth of black below Start Depth; capped at the V-bit's cone height |
 | `MinDepth` | 0.05 mm | Shallower than this, the bit lifts out |
-| `SampleStep` | 0.25 mm | Distance between depth samples along a line |
+| `SampleStep` | 0.25 mm | Distance between depth samples along a line; finer pixels are averaged to it |
 | `Contrast` | 100 % | Contrast around mid-grey; above 100 % strengthens it |
 | `Invert` | off | Swap dark and light |
 | `Tolerance` | 0.01 mm | Simplification tolerance of the toolpath |

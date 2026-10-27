@@ -31,10 +31,21 @@ def test_darkness_invert():
     assert darkness(rgb((0, 0, 0), (255, 255, 255)), 100, True)[0] == pytest.approx([0, 1])
 
 
+def test_darkness_invert_keeps_transparent_white():
+    assert darkness(rgb((0, 0, 0, 0)), 100, True)[0, 0] == pytest.approx(0)
+
+
 def test_darkness_contrast():
     grey = rgb((63, 63, 63))
     assert darkness(grey, 200, False)[0, 0] == pytest.approx(1)  # 0.5 + (63/255 - 0.5)·2 < 0: black
     assert darkness(grey, 100, False)[0, 0] == pytest.approx(1 - ((63 / 255 + 0.055) / 1.055) ** 2.4)
+
+
+def test_raster_cell_averages_finer_pixels():
+    checker = np.indices((100, 100)).sum(axis=0) % 2  # 0.1 mm pixels over 10 mm
+    pts = np.random.default_rng(1).uniform(-4.5, 4.5, (50, 2))
+    assert Raster(checker, 10, 10, cell=0.25).sample(pts) == pytest.approx(0.5)
+    assert Raster(checker, 10, 10).sample(np.array([[0.05, 0.05]]))[0] in (0, 1)  # no cell: as is
 
 
 def test_raster_orientation():

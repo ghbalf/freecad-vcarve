@@ -197,6 +197,13 @@ class OpPhotoTests(unittest.TestCase):
         self.assertFalse(self.err.called)
         self.assertTrue(self.logged(self.notice, "nothing"))
 
+    def test_default_plane_is_the_only_one(self):
+        self.job_over()
+        plane = self.plane(40, 20, halves(40, 20))
+        self.assertEqual(op_photo.Create("Photo", parentJob=self.job).ImagePlane, plane)
+        self.plane(40, 20, halves(40, 20), name="Other")
+        self.assertIsNone(op_photo.Create("Photo2", parentJob=self.job).ImagePlane)
+
     def test_plane_move_touches_op(self):
         self.job_over()
         plane = self.plane(40, 20, halves(40, 20))
