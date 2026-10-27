@@ -2,7 +2,8 @@
 """FreeCAD's progress indicator with Cancel, for long computations on the GUI thread.
 
 Inside doc.recompute() FreeCAD's own sequencer runs and ignores a nested ProgressIndicator entirely
-(no events, no Cancel), so in the GUI step() also processes events itself and watches for Esc."""
+(no events, no Cancel), so in the GUI step() also processes events itself and watches for Esc. Headless a task
+shows nothing and cannot be cancelled."""
 import time
 from contextlib import contextmanager
 
@@ -23,7 +24,7 @@ class Cancelled(Exception):
 def _watch_gui():
     """(poll, remove): poll(beat) beats the indicator and processes pending events at most every _PERIOD, and
     at most a quarter of the time when that is slow (offscreen, FreeCAD 1.1 takes 0.35 s); an application event filter,
-    installed after FreeCAD's sequencer's (which swallows Esc), turns Esc into Cancel."""
+    installed after FreeCAD's sequencer's, turns Esc into Cancel."""
     from PySide import QtCore, QtGui
 
     class Esc(QtCore.QObject):
@@ -31,7 +32,8 @@ def _watch_gui():
             global _cancelled
             if event.type() == QtCore.QEvent.KeyPress and event.key() == QtCore.Qt.Key_Escape:
                 _cancelled = True
-            return False  # FreeCAD's sequencer sees it too: in a recompute it then offers to abort the rest
+                return True  # FreeCAD's sequencer would ask whether to abort the rest of a recompute
+            return False
 
     app, esc, due = QtGui.QApplication.instance(), Esc(), [time.monotonic() + _PERIOD]
     app.installEventFilter(esc)
@@ -46,14 +48,44 @@ def _watch_gui():
     return poll, lambda: app.removeEventFilter(esc)
 
 
+def _recomputing() -> bool:
+    return any(doc.Recomputing for doc in App.listDocuments().values())
+
+
+def _later(fn):
+    from PySide import QtCore
+    QtCore.QTimer.singleShot(100, fn)
+
+
+def _release():
+    """Ends a Cancel held for a recompute once the event loop runs with no document recomputing (FreeCAD's
+    sequencer processes events between objects). A Python document observer would be exact, but with one
+    FreeCAD 1.1.1's GUI check crashed now and then."""
+    global _cancelled
+    if _depth:
+        return  # the running task's exit decides again
+    if _recomputing():
+        _later(_release)
+    else:
+        _cancelled = False
+
+
 @contextmanager
 def task(text):
-    """Shows the progress indicator with text; nested tasks share the outermost one."""
+    """Shows the progress indicator with text in the GUI; nested tasks share the outermost one. A Cancel inside
+    a recompute holds until it ends, so the recompute's later objects cancel too."""
     global _indicator, _gui, _depth, _cancelled
     if not _depth:
-        _indicator = App.Base.ProgressIndicator()
-        _indicator.start(text, 0)
-        _gui = _watch_gui() if App.GuiUp else None
+        _cancelled = _cancelled and _recomputing()
+        if App.GuiUp:
+            indicator = App.Base.ProgressIndicator()
+            try:
+                indicator.start(text, 0)
+                _gui = _watch_gui()
+            except BaseException:
+                indicator.stop()
+                raise
+            _indicator = indicator
     _depth += 1
     try:
         yield
@@ -62,8 +94,12 @@ def task(text):
         if not _depth:
             if _gui:
                 _gui[1]()
-            indicator, _indicator, _gui, _cancelled = _indicator, None, None, False
-            indicator.stop()
+            indicator, _indicator, _gui = _indicator, None, None
+            _cancelled = _cancelled and _recomputing()
+            if _cancelled:
+                _later(_release)
+            if indicator:
+                indicator.stop()
 
 
 def _beat():

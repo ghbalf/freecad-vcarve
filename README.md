@@ -86,7 +86,7 @@ Clearance operation (group "V-Carve"):
 | `PocketPattern` | Offset | Clearing pattern: Offset or ZigZag |
 | `StepOver` | 40 % | Stepover as a percentage of the tool diameter |
 | `Allowance` | 0 mm | Distance kept from the floor boundary |
-| `RestOnly` | off | Clear only what the earlier clearance ops of the same V-carve op left; needs a smaller end mill |
+| `RestOnly` | off | Clear only what the earlier clearance ops of the same V-carve op left; warns when its end mill is not smaller than theirs |
 
 ## V-carve inlay
 
@@ -159,19 +159,24 @@ op (pocket or plug). On the pocket op, `FlatDepth` 0 means no flat floor at all:
 **Check Inlay Fit** simulates the plug seated in the pocket (flipped, as you would glue it) from the G1
 moves of both Jobs' ops, clearance ops included. Select the plug or pocket op or Job of an inlay and run
 the command. It creates a "`<sketch> Fit`" object with marks just above the pocket: **red** where the plug
-collides with the board (it would not seat) and **blue** where a gap wider than the glue gap is left. The
-summary (worst collision, worst void) goes to the report view. A new check replaces the previous Fit object,
+collides with the board (the seated gap is below −0.02 mm, so it would not seat) and **blue** where a void is
+left (inside the pocket, a gap wider than the glue gap by more than 0.1 mm). The summary (worst collision,
+worst void, the number of colliding grid points) goes to the report view. A new check replaces the previous Fit object,
 as one undo step.
 
-The check refuses ops that are touched, invalid or without a toolpath ("recompute it first"). The Fit
+The check refuses ops that are touched or invalid, and a pocket or plug op that is inactive or without a
+toolpath ("recompute it first"). A clearance op with nothing to cut, such as a rest end mill that fits
+nowhere, is skipped with a notice. The Fit
 object never simulates again by itself: when the ops' toolpaths change it only marks itself
 "outdated: run Check Inlay Fit". The grid is 0.25 mm, so features smaller than that can be missed.
 
 ## Progress and cancel
 
 Ops, V-Carve Inlay and Check Inlay Fit show a progress indicator in the GUI. Press **Esc** to cancel; there
-is no confirmation. A cancelled op keeps an empty path and an error mark (recompute it to try again), a
-cancelled V-Carve Inlay leaves nothing behind, and a cancelled check keeps the old Fit object.
+is no confirmation. In a recompute, Esc cancels the running op and every later one of that recompute. A
+cancelled op keeps an empty path and an error mark (recompute it to try again), a cancelled V-Carve Inlay
+leaves nothing behind, and a cancelled check keeps the old Fit object. Headless (`freecadcmd`) there is no
+indicator and no cancel.
 
 ## Known limitations
 
@@ -188,6 +193,7 @@ cancelled V-Carve Inlay leaves nothing behind, and a cancelled check keeps the o
   are rejected with an error naming the sketch. Separate them, or put them in separate sketches.
 - A self-intersecting single loop (a figure-8) is not detected.
 - Input is 2D sketches only.
+- Check Inlay Fit simulates G1 moves only: it refuses ops with arc moves (G2/G3).
 
 ## Tests
 

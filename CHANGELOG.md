@@ -10,7 +10,8 @@ All notable changes to V-Carve Flat. The format follows [Keep a Changelog](https
 - Rest machining: a `RestOnly` clearance op clears what the earlier clearance ops left, so a chain of
   smaller end mills can precede the V-bit's rest pass.
 - V-Carve Inlay dialog: an optional rest end mill, added to both Jobs as a `RestOnly` clearance op.
-- Progress indicator with Cancel (Esc) for the ops, V-Carve Inlay and the fit check.
+- Progress indicator with Cancel (Esc, no confirmation; in a recompute it also cancels the later ops) for
+  the ops, V-Carve Inlay and the fit check.
 
 ### Changed
 - Several clearance ops per V-carve op are supported (the V-bit rest area follows the whole chain),

@@ -60,15 +60,16 @@ def spin(progress):
 
 
 def check_progress(doc):
-    """Events flow and Esc cancels, on its own and inside a recompute (where FreeCAD's sequencer ignores ours)."""
+    """Events flow and Esc cancels, on its own and inside a recompute (where FreeCAD's sequencer ignores ours),
+    there with no prompt of FreeCAD's and for the recompute's later objects too."""
     from vcarve_flat import progress
     fired, asked = [], []
 
-    def answer():  # FreeCAD's "abort the rest of the recompute?"
+    def answer():  # FreeCAD's "abort the rest of the recompute?" must not show
         box = QtGui.QApplication.activeModalWidget()
         if isinstance(box, QtGui.QMessageBox):
             asked.append(box.text())
-            box.button(QtGui.QMessageBox.Yes).click()
+            box.button(QtGui.QMessageBox.No).click()
     closer = QtCore.QTimer()
     closer.timeout.connect(answer)
     closer.start(50)
@@ -76,21 +77,33 @@ def check_progress(doc):
     QtCore.QTimer.singleShot(300, press_esc)
     assert spin(progress) < 2 and fired and not asked, (fired, asked)
 
+    order = []  # the first object recomputed gets the Esc
+
     class Slow:
         def __init__(self, obj):
             obj.Proxy, self.took = self, None
 
         def execute(self, obj):
-            QtCore.QTimer.singleShot(300, press_esc)
+            if not order:
+                QtCore.QTimer.singleShot(300, press_esc)
+            order.append(obj)
             self.took = spin(progress)
 
-    slow = doc.addObject("App::FeaturePython", "Slow")
-    Slow(slow)
+    slow = [doc.addObject("App::FeaturePython", f"Slow{i}") for i in range(3)]
+    for obj in slow:
+        Slow(obj)
     doc.recompute()
     closer.stop()
-    assert slow.Proxy.took is not None and slow.Proxy.took < 2, slow.Proxy.took
+    took = [obj.Proxy.took for obj in order]
+    assert not asked, asked
+    assert len(took) == 3 and took[0] < 2 and max(took[1:]) < 0.1, took
+    t0 = time.monotonic()
+    while progress.cancelled() and time.monotonic() - t0 < 2:  # held until the event loop runs
+        QtGui.QApplication.processEvents()
+        time.sleep(0.01)
     assert not progress.cancelled()
-    doc.removeObject(slow.Name)
+    for obj in slow:
+        doc.removeObject(obj.Name)
     # Steps stay cheap however slow FreeCAD's indicator and event processing are (1.1 offscreen: 0.35 s a beat)
     QtGui.QApplication.processEvents()
     with progress.task("GUI check"):
