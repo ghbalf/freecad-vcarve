@@ -99,6 +99,14 @@ class OpPhotoTests(unittest.TestCase):
         self.assertEqual(len(runs(op)), 8)
         self.assertFalse(self.err.called)
 
+    def test_image_top_is_plus_y(self):
+        px = np.full((20, 40, 3), 255, np.uint8)
+        px[:10] = 0  # the top half black
+        self.job_over()
+        pts = cut_points(self.make_op(self.plane(40, 20, px), Angle=0, LineSpacing=2.5))
+        self.assertTrue(len(pts))
+        self.assertTrue((pts[:, 1] > 0).all())
+
     def test_default_spacing_keeps_grooves_apart(self):
         self.job_over()
         op = self.make_op(self.plane(40, 20, halves(40, 20)))
