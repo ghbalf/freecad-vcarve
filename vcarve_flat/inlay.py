@@ -94,20 +94,21 @@ def create_inlay(job, sketch, vtc, etc, pocket_depth, glue_gap, boundary="Margin
     pocket[1].BaseShapes = list(qjob.Model.Group)
     pocket[1].FlatDepth = pocket_depth
     plug_pair = op_clearance.create_pair(pjob, *ptcs[:2], vcarve_create=op_plug.Create, name="VCarvePlug")
-    clr, plug = plug_pair
+    plug = plug_pair[1]
     plug.PocketOp = pocket[1]
     plug.GlueGap = glue_gap
     plug.SurfaceGap = surface_gap(vbit, pocket_depth, glue_gap)
     plug.PlugBoundary = boundary
     plug.RidgePass = ridge
-    clr.Proxy.opUpdateDepths(clr)
+    for op in plug_pair:
+        op.Proxy.opUpdateDepths(op)
+    # the board's thickness, but deep enough for the plug (Job.Create leaves 1 mm below the sketch); set before
+    # the plug's first computation, which warns about a stock thinner than the plug
+    floor = min(op.OpFinalDepth.Value for op in plug_pair)
+    pjob.Stock.ExtZneg = max(job.Stock.Shape.BoundBox.ZLength, pjob.Stock.Shape.BoundBox.ZMax - floor + 1)
     rest_ops = [_add_rest(j, pair, tcs[2]) for j, pair, tcs in ((qjob, pocket, qtcs), (pjob, plug_pair, ptcs)) if rests]
     for op in (*pocket, *plug_pair, *rest_ops):
         _stepdown(op, stepdown)
-    doc.recompute()
-    # the board's thickness, but deep enough for the plug (Job.Create leaves 1 mm below the sketch)
-    floor = min(op.FinalDepth.Value for op in plug_pair)
-    pjob.Stock.ExtZneg = max(job.Stock.Shape.BoundBox.ZLength, pjob.Stock.Shape.BoundBox.ZMax - floor + 1)
     doc.recompute()
     # named last: FreeCAD 1.1 keeps the label of a Job with a view provider taken after a cancel undoes it
     qjob.Label, pjob.Label = f"{original.Label} Pocket", f"{original.Label} Plug"

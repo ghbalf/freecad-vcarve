@@ -100,6 +100,8 @@ class InlayTests(unittest.TestCase):
             board = self.job.Stock.Shape.BoundBox.ZLength  # ExtZpos adds 1 mm above the sketch
             self.assertAlmostEqual(bb.ZMin, min(-board, clr.FinalDepth.Value - 1, plug.FinalDepth.Value - 1))
             self.assertAlmostEqual(plug.StartDepth.Value, 0)
+        # sized before the plug is first computed, not after its warning about Job.Create's 1 mm stock
+        self.assertNotIn("thinner", str(Path.Log.warning.call_args_list))
 
     def test_options_and_clone(self):
         _, _, _, (_, plug) = self.build(self.job.Model.Group[0], boundary="Stock", ridge=False)
