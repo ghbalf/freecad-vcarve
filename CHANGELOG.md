@@ -18,6 +18,11 @@ All notable changes to V-Carve Flat. The format follows [Keep a Changelog](https
   replacing the single-op restriction.
 - Deleting or reordering a clearance op updates the chain in the same recompute.
 
+### Fixed
+- Where a sharp (mitred) corner of a counter reaches through the floor's edge opposite it, the V-bit now
+  runs up the two grooves this leaves; the cone alone rounded them and the wall above them, and the plug
+  collided there (by up to 0.4 mm with a 60° bit, 0.03 mm in a 90° "A").
+
 ## [0.2.0] - 2026-10-26
 
 ### Added

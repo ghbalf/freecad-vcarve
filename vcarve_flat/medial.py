@@ -8,7 +8,7 @@ import Path
 from Path.Op.Vcarve import (BORDERLINE, COLINEAR, EXTERIOR1, EXTERIOR2, PRIMARY, SECONDARY, TWIN,
                             _collectVoronoiWires)
 
-from .clearing import inner_corners, offset_faces
+from .clearing import corner_kites, corners, inner_corners, offset_faces
 from .geom import (depth_for_radius, distances_to_segments, drop_collinear, drop_floor_runs, flat_radius,
                    insert_crossings, narrow_points, simplify)
 
@@ -134,9 +134,41 @@ def has_narrow_gap(face, radius, *, deflection, colinear_deg, step) -> bool:
 
 
 def flat_boundary_loops(face, vbit, z_top, depth_limit, *, deflection, tol) -> list:
-    """Closed loops where the V-bit wall meets the flat floor (face offset inward by r_flat)."""
-    return face_loops(offset_faces([face], -flat_radius(vbit, depth_limit), sharp=True), z_top - depth_limit,
-                      deflection=deflection, tol=tol)
+    """Closed loops where the V-bit wall meets the flat floor (face offset inward by r_flat), and that
+    floor's cap_grooves."""
+    floor = offset_faces([face], -flat_radius(vbit, depth_limit), sharp=True)
+    return (face_loops(floor, z_top - depth_limit, deflection=deflection, tol=tol)
+            + cap_grooves([face], floor, vbit, z_top, depth_limit))
+
+
+def cap_grooves(faces, floor, vbit, z_top, depth_limit) -> list:
+    """A pass up each groove that starts where a mitred corner of floor (faces offset sharp by r_flat) cuts
+    through another floor edge, from that corner to the mitre's centre line; the floor pass's cone alone
+    leaves the groove, and the wall above it, rounded."""
+    r, tan = flat_radius(vbit, depth_limit), math.tan(vbit.half_angle)
+    kites = corner_kites(faces, r)
+    paths = []
+    for p, u, convex in (k for f in floor for k in corners(f)):
+        if not convex:
+            continue
+        for c, s0, apex, s1 in kites:
+            for s in (s0, s1):
+                side = apex - s
+                t = (p - s).dot(side) / side.dot(side)
+                if not 1e-6 < t < 1 - 1e-6 or (s + side * t - p).Length > 1e-4:
+                    continue
+                b = -(u[0] + u[1]).normalize()  # up the groove, away from the floor
+                slope = abs(b.cross(side).z) / side.Length  # distance to the walls lost per mm along b
+                axis = apex - c
+                across = b.cross(axis).z
+                if abs(across) < 1e-9:
+                    continue
+                end = min((c - p).cross(axis).z / across, (r - vbit.tip_radius) / slope)
+                if end > 0:
+                    q = p + b * end
+                    paths.append(np.array([(p.x, p.y, z_top - depth_limit),
+                                           (q.x, q.y, z_top - (r - slope * end - vbit.tip_radius) / tan)]))
+    return paths
 
 
 def face_loops(faces, z, *, deflection, tol) -> list:
