@@ -22,6 +22,8 @@ All notable changes to V-Carve Flat. The format follows [Keep a Changelog](https
 - Where a sharp (mitred) corner of a counter reaches through the floor's edge opposite it, the V-bit now
   runs up the two grooves this leaves; the cone alone rounded them and the wall above them, and the plug
   collided there (by up to 0.4 mm with a 60° bit, 0.03 mm in a 90° "A").
+- FreeCAD 26: the progress bar of Check Inlay Fit and V-Carve Inlay showed nothing; its Part booleans stop
+  the running progress indicator, which is now restarted.
 
 ## [0.2.0] - 2026-10-26
 

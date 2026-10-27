@@ -12,6 +12,7 @@ from unittest import mock
 import FreeCAD as App
 import FreeCADGui as Gui
 import numpy as np
+import Part
 import Path
 from PySide import QtCore, QtGui
 
@@ -114,6 +115,17 @@ def check_progress(doc):
             time.sleep(0.002)
             slept += time.monotonic() - t
     assert slept > 1, slept  # of the 2 s; 0.12 s when every step beat the indicator
+    # FreeCAD 26's Part booleans stop the running sequencer, whose bar then never showed
+    bars = Gui.getMainWindow().statusBar().findChildren(QtGui.QProgressBar)
+    assert bars, "no progress bar in the status bar"
+    with progress.task("GUI check"):
+        Part.makeBox(5, 5, 5).cut(Part.makeCylinder(1, 9))
+        t0, shown = time.monotonic(), False
+        while time.monotonic() - t0 < 4 and not shown:
+            progress.step()
+            time.sleep(0.01)
+            shown = any(b.isVisible() for b in bars)
+    assert shown, "no progress bar after a Part boolean"
 
 
 def check_tree(doc, jobs):
