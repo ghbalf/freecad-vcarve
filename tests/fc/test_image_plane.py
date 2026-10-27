@@ -49,9 +49,8 @@ class ImagePlaneTest(unittest.TestCase):
         p = self.plane()
         p.Placement = App.Placement(App.Vector(), App.Rotation(App.Vector(1, 0, 0), 180))
         to_uv, _ = plane_frame(p)
-        # World (5, 2) is local (5, -2); u is negated because local z points down, so the photo is
-        # turned 180 degrees in the plane, never mirrored.
-        np.testing.assert_allclose(to_uv(np.array([[5.0, 2]])), [[-5, -2]], atol=1e-9)
+        # World (5, 2) is local (5, -2): carved as the top view shows it, flipped top to bottom.
+        np.testing.assert_allclose(to_uv(np.array([[5.0, 2]])), [[5, -2]], atol=1e-9)
 
     def test_frame_tilted(self):
         p = self.plane()

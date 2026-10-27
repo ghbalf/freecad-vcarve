@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from vcarve_flat.photo import Raster, cut_runs, darkness, hatch_share, line_set, resample
+from vcarve_flat.photo import Raster, band_sample, cut_runs, darkness, hatch_share, line_set, resample
 
 
 def rgb(*pixels):
@@ -46,6 +46,14 @@ def test_raster_cell_averages_finer_pixels():
     pts = np.random.default_rng(1).uniform(-4.5, 4.5, (50, 2))
     assert Raster(checker, 10, 10, cell=0.25).sample(pts) == pytest.approx(0.5)
     assert Raster(checker, 10, 10).sample(np.array([[0.05, 0.05]]))[0] in (0, 1)  # no cell: as is
+
+
+def test_band_sample_sees_between_lines():
+    rho = np.zeros((100, 100))
+    rho[35:45] = 1  # dark for 0.5 < v < 1.5 mm
+    raster, xy = Raster(rho, 10, 10), np.column_stack([np.linspace(-4, 4, 9), np.zeros(9)])
+    assert raster.sample(xy) == pytest.approx(0)
+    assert band_sample(raster, lambda p: p, xy, np.array([0, 1.0]), 4, 0.25) == pytest.approx(0.25)
 
 
 def test_raster_orientation():

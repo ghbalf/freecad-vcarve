@@ -166,7 +166,8 @@ op (pocket or plug). On the pocket op, `FlatDepth` 0 means no flat floor at all:
 shallow ones or none. It suits light, close-grained hardwood such as maple.
 
 1. **Import the photo.** File → Import, choose the image and "Image plane". Set the plane's size
-   (`XSize`, `YSize`) and place it over the stock, flat in XY; it may face up or down. Only the part
+   (`XSize`, `YSize`) and place it over the stock, flat in XY. It is carved as the top view shows it,
+   so a plane facing down gives a mirrored carving. Only the part
    over the stock is carved; the op warns when the image reaches outside it.
 2. **Prepare it beforehand** in GIMP or similar. Colour images are converted to grey
    (0.299 R + 0.587 G + 0.114 B), but converting yourself gives control over which colours turn dark.
@@ -204,6 +205,7 @@ Patterns (group "V-Carve Photo"):
 | `SampleStep` | 0.25 mm | Distance between depth samples along a line; finer pixels are averaged to it |
 | `Contrast` | 100 % | Contrast around mid-grey; above 100 % strengthens it |
 | `Invert` | off | Swap dark and light |
+| `BandAverage` | off | Lines and Hatch: each groove follows the image averaged over its whole band (`LineSpacing` wide) instead of the strip under the line. Truer tone and thin details between lines show, but a highlight smaller than the spacing fades |
 | `Tolerance` | 0.01 mm | Simplification tolerance of the toolpath |
 
 **Eyes.** A portrait lives or dies by its eyes. Make the pupil fully black and leave a small pure-white

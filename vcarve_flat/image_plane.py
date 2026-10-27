@@ -30,7 +30,7 @@ def size(plane) -> tuple:
 def plane_frame(plane):
     """(to_uv, bbox): to_uv maps (N, 2) world XY, projected straight down onto the plane, to image
     coordinates in mm (centred, v towards the image's top row); bbox is the image's world XY extent.
-    A plane facing down is read as seen from above, so the photo is never mirrored."""
+    A plane facing down is carved as the top view shows it."""
     pl = plane.Placement
     normal = pl.Rotation.multVec(App.Vector(0, 0, 1))
     if abs(normal.z) < 1 - 1e-6:
@@ -38,10 +38,9 @@ def plane_frame(plane):
     m = pl.inverse().Matrix
     a = np.array([[m.A11, m.A12], [m.A21, m.A22]])
     t = np.array([m.A14, m.A24])
-    flip = np.array([-1.0 if normal.z < 0 else 1.0, 1.0])
 
     def to_uv(xy):
-        return (np.asarray(xy, float) @ a.T + t) * flip
+        return np.asarray(xy, float) @ a.T + t
 
     w, h = size(plane)
     corners = np.array([[c.x, c.y] for c in (pl.multVec(App.Vector(sx * w / 2, sy * h / 2, 0))

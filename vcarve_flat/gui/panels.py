@@ -271,11 +271,14 @@ class PhotoOpPage(_Page):
         form.Contrast = _row(grid, translate("CAM_VCarve", "Contrast"), _double(0, 0, 1000, 10))
         form.Contrast.setSuffix(" %")
         form.Invert = _row(grid, translate("CAM_VCarve", "Invert"), QtGui.QCheckBox())
+        form.BandAverage = _row(grid, translate("CAM_VCarve", "Band Average"), QtGui.QCheckBox())
+        labelled("BandAverage")
 
     def _show_pattern(self, *_):
         pattern = self.form.Pattern.currentText()
         shown = {"Angle": pattern != "Custom", "LineSpacing": pattern != "Custom",
-                 "HatchAngle": pattern == "Hatch", "VectorsBox": pattern == "Custom"}
+                 "HatchAngle": pattern == "Hatch", "VectorsBox": pattern == "Custom",
+                 "BandAverage": pattern != "Custom"}
         for prop, on in shown.items():
             getattr(self.form, prop).setHidden(not on)
             self.labels[prop].setHidden(not on)
@@ -314,8 +317,9 @@ class PhotoOpPage(_Page):
             obj.Vectors = vectors
         if obj.Contrast != self.form.Contrast.value():
             obj.Contrast = self.form.Contrast.value()
-        if obj.Invert != self.form.Invert.isChecked():
-            obj.Invert = self.form.Invert.isChecked()
+        for prop in ("Invert", "BandAverage"):
+            if getattr(obj, prop) != getattr(self.form, prop).isChecked():
+                setattr(obj, prop, getattr(self.form, prop).isChecked())
 
     def setFields(self, obj):
         super().setFields(obj)
@@ -342,12 +346,13 @@ class PhotoOpPage(_Page):
             self.form.Vectors.addItem(item)
         self.form.Contrast.setValue(obj.Contrast)
         self.form.Invert.setChecked(obj.Invert)
+        self.form.BandAverage.setChecked(obj.BandAverage)
         self._show_pattern()
 
     def getSignalsForUpdate(self, obj):
         return super().getSignalsForUpdate(obj) + [
             self.form.ImagePlane.currentIndexChanged, self.form.Pattern.currentIndexChanged,
-            self.form.Contrast.editingFinished, self.form.Invert.stateChanged]
+            self.form.Contrast.editingFinished, self.form.Invert.stateChanged, self.form.BandAverage.stateChanged]
 
     def registerSignalHandlers(self, obj):
         self.form.Pattern.currentIndexChanged.connect(self._show_pattern)

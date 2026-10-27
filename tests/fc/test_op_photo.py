@@ -197,6 +197,17 @@ class OpPhotoTests(unittest.TestCase):
         self.assertFalse(self.err.called)
         self.assertTrue(self.logged(self.notice, "nothing"))
 
+    def test_band_average(self):
+        px = np.full((200, 400, 3), 255, np.uint8)
+        px[95:105] = 0  # a 1 mm dark stripe between the lines at y = -1.25 and 1.25
+        self.job_over()
+        plane = self.plane(40, 20, px)
+        props = dict(Angle=0, LineSpacing=2.5, MinDepth=0.01)
+        self.assertEqual(len(cut_points(self.make_op(plane, **props))), 0)
+        pts = cut_points(self.make_op(plane, BandAverage=True, **props))
+        self.assertTrue(len(pts))
+        np.testing.assert_allclose(np.abs(pts[:, 1]), 1.25)
+
     def test_default_plane_is_the_only_one(self):
         self.job_over()
         plane = self.plane(40, 20, halves(40, 20))

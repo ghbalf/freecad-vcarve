@@ -56,6 +56,13 @@ class Raster:
         return np.where(inside, top * (1 - fr) + bottom * fr, 0.0)
 
 
+def band_sample(raster: Raster, to_uv, xy: np.ndarray, normal: np.ndarray, width: float, step: float):
+    """Darkness at the points xy averaged across a band width wide along normal, sampled at most step apart."""
+    n = max(1, int(np.ceil(width / step - 1e-9)))
+    return np.mean([raster.sample(to_uv(xy + off * normal)) for off in ((np.arange(n) + 0.5) / n - 0.5) * width],
+                   axis=0)
+
+
 def line_set(rect, angle: float, spacing: float) -> list:
     """Parallel lines at angle degrees from +X, spacing apart and symmetric about the centre of rect
     (xmin, ymin, xmax, ymax), each clipped to rect as a 2x2 array, in offset order with every second

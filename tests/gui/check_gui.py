@@ -206,12 +206,13 @@ def check_photo(doc, job):
     combo.setCurrentIndex(combo.findData(plane.Name))
 
     def hidden():
-        return {p for p in ("Angle", "HatchAngle", "LineSpacing", "VectorsBox") if getattr(form, p).isHidden()}
+        fields = ("Angle", "HatchAngle", "LineSpacing", "VectorsBox", "BandAverage")
+        return {p for p in fields if getattr(form, p).isHidden()}
     assert hidden() == {"HatchAngle", "VectorsBox"}, hidden()
     form.Pattern.setCurrentText("Hatch")
     assert hidden() == {"VectorsBox"}, hidden()
     form.Pattern.setCurrentText("Custom")
-    assert hidden() == {"Angle", "HatchAngle", "LineSpacing"}, hidden()
+    assert hidden() == {"Angle", "HatchAngle", "LineSpacing", "BandAverage"}, hidden()
     Gui.Selection.clearSelection()
     Gui.Selection.addSelection(doc.getObject("Letters"))
     form.addVectors.click()
@@ -221,11 +222,12 @@ def check_photo(doc, job):
     assert not op.Vectors and not form.Vectors.count(), [o.Label for o in op.Vectors]
     Gui.Selection.clearSelection()
     form.Pattern.setCurrentText("Lines")
+    form.BandAverage.setChecked(True)
     for p in panel.featurePages:
         p.setDirty()
     panel.accept()
     QtGui.QApplication.processEvents()
-    assert op.ImagePlane == plane and op.Pattern == "Lines", (op.ImagePlane, op.Pattern)
+    assert op.ImagePlane == plane and op.Pattern == "Lines" and op.BandAverage, (op.ImagePlane, op.Pattern)
     assert any(c.Name in ("G1", "G01") for c in op.Path.Commands), "no cut after OK"
     assert not Gui.Control.activeDialog(), "the photo panel stayed open"
 

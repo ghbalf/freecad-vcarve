@@ -34,6 +34,8 @@ _PROPS = [  # (type, name, default, tooltip)
     ("App::PropertyLength", "SampleStep", mm(0.25), "Distance between depth samples along a line"),
     ("App::PropertyFloat", "Contrast", 100.0, "Contrast around mid-grey in percent (100 = unchanged)"),
     ("App::PropertyBool", "Invert", False, "Swap dark and light"),
+    ("App::PropertyBool", "BandAverage", False, "Lines and Hatch: average the image across each line's band "
+     "instead of reading it under the line; truer tone, but small highlights between lines fade"),
     ("App::PropertyLength", "Tolerance", mm(0.01), "Simplification tolerance of the toolpath"),
 ]
 
@@ -120,7 +122,7 @@ class ObjectVCarvePhoto(PathOp.ObjectOp):
             Path.Log.warning(f"{obj.Label}: Max Depth {obj.MaxDepth.Value:g} mm is deeper than the V-bit "
                              f"cone, using {depth:.3f} mm")
         if obj.Pattern == "Custom":
-            sets = [(_vector_lines(obj.Vectors, obj.Tolerance.Value), False)]
+            sets = [(_vector_lines(obj.Vectors, obj.Tolerance.Value), False, None)]
         else:
             rect = self.clip_rect(obj, bbox)
             if rect is None:
@@ -129,13 +131,17 @@ class ObjectVCarvePhoto(PathOp.ObjectOp):
                 Path.Log.warning(f"{obj.Label}: the groove at Max Depth ({groove_width(vbit, depth):.2f} mm) "
                                  f"is wider than Line Spacing, so neighbouring grooves merge in the darkest areas")
             angles = [obj.Angle.Value] + ([obj.HatchAngle.Value] if obj.Pattern == "Hatch" else [])
-            sets = [(photo.line_set(rect, a, obj.LineSpacing.Value), obj.Pattern == "Hatch") for a in angles]
+            sets = [(photo.line_set(rect, a, obj.LineSpacing.Value), obj.Pattern == "Hatch",
+                     np.array([-math.sin(math.radians(a)), math.cos(math.radians(a))]) if obj.BandAverage else None)
+                    for a in angles]
         paths = []
-        for lines, hatch in sets:
+        step = obj.SampleStep.Value
+        for lines, hatch, normal in sets:
             for line in lines:
                 progress.step()
-                xy = photo.resample(line, obj.SampleStep.Value)
-                rho = raster.sample(to_uv(xy))
+                xy = photo.resample(line, step)
+                rho = (raster.sample(to_uv(xy)) if normal is None
+                       else photo.band_sample(raster, to_uv, xy, normal, obj.LineSpacing.Value, step))
                 d = (photo.hatch_share(rho) if hatch else rho) * depth
                 paths += photo.cut_runs(xy, d, obj.MinDepth.Value, obj.StartDepth.Value, obj.Tolerance.Value)
         if not paths:

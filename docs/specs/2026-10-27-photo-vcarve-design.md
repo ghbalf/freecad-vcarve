@@ -22,7 +22,7 @@ darkness, and a V-bit's groove width follows its depth.
    that object and does not read files the user picks itself. The image plane's size and placement
    set where the photo lies over the stock. The plane must be parallel to the XY plane (an error
    otherwise). **(Claude's call:** the photo is projected straight down onto the stock top whatever the
-   plane's Z, and a plane facing −Z is read as seen from above, so the lion is never mirrored.) This loosens the project's "sketches only" rule to "sketches or a FreeCAD image
+   plane's Z, and a plane facing −Z is carved as the top view shows it — mirrored, as on screen; ruled at review.) This loosens the project's "sketches only" rule to "sketches or a FreeCAD image
    plane".
 3. **Colour photos** are converted to grey inside the op with the usual luminance weights
    (0.299 R + 0.587 G + 0.114 B). **(Claude's call:** the grey is converted from the image's sRGB
