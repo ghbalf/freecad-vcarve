@@ -54,8 +54,9 @@ down the bisector of each of the design's inner corners.
 for you); it cuts the floor with the end mill, using `PocketPattern`, `StepOver` and `Allowance`.
 Where the end mill cannot reach part of the floor (corners, narrow areas), the V-bit clears that
 rest area. With no clearance op the V-bit clears the whole floor, which is slow, and a warning says so.
-The V-carve op follows its clearance op: after you change the end mill, `Allowance` or `Active`, or
-re-point `VCarveOp`, the next recompute updates the V-bit rest area too (in the same recompute).
+The V-carve op follows its clearance op: after you change the end mill, `Allowance` or `Active`,
+re-point `VCarveOp`, or delete or reorder clearance ops, the next recompute updates the V-bit rest area
+too (in the same recompute).
 Only one active clearance op per V-carve op is supported; with more, a warning names the one used.
 
 ## Properties
@@ -156,8 +157,6 @@ op (pocket or plug). On the pocket op, `FlatDepth` 0 means no flat floor at all:
 - In strokes narrower than the flat floor the V-bit follows the centre line, so their inner corners
   keep the cone's rounding.
 - A clearance `StepOver` near 100 % leaves uncut ridges between passes, as with CAM Pocket.
-- After deleting a clearance op, recompute its V-carve op (select it and press Recompute) so the
-  V-bit clears the whole floor again.
 - Overlapping or touching outlines in one sketch (for example ShapeString letters that touch)
   are rejected with an error naming the sketch. Separate them, or put them in separate sketches.
 - A self-intersecting single loop (a figure-8) is not detected.

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+import importlib
 import os
 import tempfile
 import unittest
@@ -12,7 +13,7 @@ import Path.Tool.Controller
 
 from helpers import _tool, add_clearance, make_job, make_sketch
 from test_op_vcarve import L_FAR, RECT, cut_points, g1_length
-from vcarve_flat import op_clearance, op_vcarve
+from vcarve_flat import observer, op_clearance, op_vcarve
 from vcarve_flat.compat import tool_shape
 from vcarve_flat.geom import flat_radius
 
@@ -173,6 +174,54 @@ class ClearanceTests(unittest.TestCase):
         self.assertLess(g1_length(rest), before)
         for op in (clr, rest, vc):
             self.assertNotIn("Touched", op.State)
+
+    def rest_chain(self):
+        """A 5 mm op then a 1 mm RestOnly op on one V-carve op (V-bit tip 0, see test_vbit_rest_shrinks_with_rest_op)."""
+        clr, vc = self.pair([RECT, L_FAR], flat=2.0)
+        self.vtc.Tool.TipDiameter = 0
+        rest = add_clearance(self.doc, self.job, vc, 1.0, rest_only=True)
+        return clr, rest, vc
+
+    def test_delete_first_op_recomputes_chain(self):
+        clr, rest, vc = self.rest_chain()
+        rest.Allowance = 0.2  # else the 1 mm op alone reaches what the chain reaches
+        self.doc.recompute()
+        before = g1_length(vc, -2.0)
+        ref = self.vcarve_without_clearance(vc)
+        ref_clr = add_clearance(self.doc, self.job, ref, 1.0)
+        ref_clr.Allowance = 0.2
+        Path.Log.warning.reset_mock()
+        self.doc.removeObject(clr.Name)
+        self.assertIn("Touched", rest.State)
+        self.doc.recompute()
+        self.assertEqual((vc.RestChain, rest.RestChain), ("0.5,0.2", ""))
+        self.assertGreater(g1_length(vc, -2.0), before)
+        self.assertAlmostEqual(g1_length(vc, -2.0), g1_length(ref, -2.0), delta=1e-3 * g1_length(ref, -2.0))
+        self.assertAlmostEqual(g1_length(rest), g1_length(ref_clr), delta=1e-3 * g1_length(ref_clr))
+        self.assertTrue(self.warned("no clearance op before it"), Path.Log.warning.call_args_list)
+        for op in (rest, vc):
+            self.assertNotIn("Touched", op.State)
+
+    def test_reorder_recomputes(self):
+        clr, rest, vc = self.rest_chain()
+        part = g1_length(rest)
+        g = self.job.Operations.Group
+        i, j = g.index(clr), g.index(rest)
+        g[i], g[j] = rest, clr
+        Path.Log.warning.reset_mock()
+        self.job.Operations.Group = g
+        self.doc.recompute()
+        self.assertEqual((vc.RestChain, rest.RestChain, clr.RestChain), ("0.5,0;2.5,0", "", "0.5,0"))
+        self.assertGreater(g1_length(rest), 2 * part)
+        self.assertTrue(self.warned("no clearance op before it"), Path.Log.warning.call_args_list)
+
+    def test_observer_installed_once(self):
+        clr, _ = self.pair([RECT])
+        importlib.reload(observer)  # as FreeCAD's module reload does
+        observer.install()
+        with mock.patch.object(observer, "_deleted") as deleted:
+            self.doc.removeObject(clr.Name)
+        deleted.assert_called_once()
 
     def test_restore_without_rest_only(self):
         clr, vc = self.pair([NECK])

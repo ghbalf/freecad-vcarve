@@ -5,7 +5,7 @@ import Path
 import Path.Base.SetupSheet as PathSetupSheet
 import Path.Op.Base as PathOp
 
-from . import op_vcarve
+from . import observer, op_vcarve
 from .clearing import pocket_polylines, rest_region
 from .compat import tool_shape
 from .geom import order_paths
@@ -210,3 +210,4 @@ def create_pair(job, vtc=None, etc=None, vcarve_create=op_vcarve.Create, name="V
 
 
 PathSetupSheet.RegisterOperation("VCarveClearance", Create, SetupProperties)
+observer.install()
