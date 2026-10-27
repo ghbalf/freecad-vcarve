@@ -146,6 +146,11 @@ the half-angle h with the sides: the gap is r_t/cos h wide on each side (1.41·r
 corner), reaches (r_t + start·t)/sin h from the corner, and is 2·r_t·sin h/t high on the bisector.
 These gaps are accepted. The plug op warns when the design has gaps narrower than the tip.
 
+The flat tip also cannot reach into a sharp, narrow inner corner of the plug's cut area at its floor, such as
+the mirrored tip of a counter. It leaves a sliver there that the glue gap almost entirely absorbs. In the
+"A" test inlay (60° bit, 0.1 mm tip, 38° counter tip, G 0.2) Check Inlay Fit measures up to 0.023 mm over
+about 0.004 mm², just past its 0.02 mm tolerance. A pointed bit leaves nothing.
+
 **Rounded tips.** FreeCAD's V-bit only has a flat tip. For a rounded tip, enter as Tip Diameter the
 width where the rounding meets the cone. The real tip lies inside that model, so errors are gaps,
 never collisions. Zeroing Z on the bottom of the rounding makes the floor gap larger, never smaller.
@@ -193,6 +198,8 @@ indicator and no cancel.
 - Overlapping or touching outlines in one sketch (for example ShapeString letters that touch)
   are rejected with an error naming the sketch. Separate them, or put them in separate sketches.
 - A self-intersecting single loop (a figure-8) is not detected.
+- A flat-tipped V-bit leaves a tiny collision at sharp, narrow inner corners of the plug (0.023 mm
+  at a 38° counter tip with a 0.1 mm tip, see Tip and ridge pass).
 - Input is 2D sketches only.
 - Check Inlay Fit simulates G1 moves only: it refuses ops with arc moves (G2/G3).
 

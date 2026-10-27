@@ -2,6 +2,12 @@
 
 All notable changes to V-Carve Flat. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Changed
+- The plug's flat-tip limit at sharp, narrow inner corners (such as a counter's mirrored tip) is
+  documented: up to 0.023 mm over about 0.004 mm² with a 0.1 mm tip, none with a pointed bit.
+
 ## [0.3.0] - 2026-10-27
 
 ### Added
