@@ -23,10 +23,10 @@ class FitResult:
     z: np.ndarray  # pocket cut height, 0 on the board surface
     collisions: np.ndarray
     voids: np.ndarray
-    worst_collision: float  # the lowest gap, at most 0
-    worst_void: float  # the widest gap in the pocket, 0 without one
+    worst_collision: float  # the lowest gap among the collisions; 0 means none
+    worst_void: float  # the widest gap among the voids; 0 means none
     ops: list
-    error: str = None
+    error: str | None = None
 
 
 def tool_profile(tc) -> tuple:
@@ -138,37 +138,43 @@ def _inside(q, faces, deflection=0.01) -> np.ndarray:
         for wire in face.Wires:
             p = np.array([(v.x, v.y) for v in wire.discretize(Deflection=deflection)])
             a.append(np.column_stack([p, np.roll(p, -1, axis=0)]))
-    a = np.vstack(a)
+    x0, y0, x1, y1 = np.vstack(a).T
     out = np.zeros(len(q), bool)
-    for i in range(0, len(q), 4096):
-        x, y = q[i:i + 4096, 0, None], q[i:i + 4096, 1, None]
-        x0, y0, x1, y1 = a.T
+    chunk = max(1, 2 ** 21 // len(x0))
+    for i in range(0, len(q), chunk):
+        progress.step()
+        x, y = q[i:i + chunk, 0, None], q[i:i + chunk, 1, None]
         crosses = (y0 > y) != (y1 > y)
         with np.errstate(invalid="ignore", divide="ignore"):
-            out[i:i + 4096] = (crosses & (x < x0 + (y - y0) * (x1 - x0) / (y1 - y0))).sum(axis=1) % 2 == 1
+            out[i:i + chunk] = (crosses & (x < x0 + (y - y0) * (x1 - x0) / (y1 - y0))).sum(axis=1) % 2 == 1
     return out
 
 
 def check(plug, grid=0.25, tol=0.02) -> FitResult:
     """Seats the plug op's plug in its pocket on a grid over the plug's bound, mirrored to the board."""
-    pocket = plug.PocketOp
+    def refuse(error):
+        return FitResult(np.zeros((0, 2)), grid, np.zeros(0), np.zeros(0), np.zeros(0, bool), np.zeros(0, bool),
+                         0.0, 0.0, ops, error)
+
+    pocket, ops = plug.PocketOp, [plug]
+    if pocket is None:
+        return refuse(f"{plug.Label}: no pocket op linked")
     n = 1 + len(pocket_clearance := op_vcarve.clearance_ops(pocket))
-    ops, paths, error = [pocket, *pocket_clearance, plug, *op_vcarve.clearance_ops(plug)], [], None
+    ops, paths = [pocket, *pocket_clearance, plug, *op_vcarve.clearance_ops(plug)], []
     for i, op in enumerate(ops):
         try:
             a, b = g1_segments(op, (pocket if i < n else plug).StartDepth.Value)
         except ValueError as err:
-            error = str(err)
-            break
+            return refuse(str(err))
         if "Invalid" in op.State or "Error" in op.State or not len(a):
-            error = f"{op.Label}: no toolpath, recompute it first"
-            break
+            return refuse(f"{op.Label}: no toolpath, recompute it first")
+        if "Touched" in op.State:
+            return refuse(f"{op.Label}: out of date, recompute it first")
         paths.append(((a, b), tool_profile(op.ToolController)))
-    if error:
-        return FitResult(np.zeros((0, 2)), grid, np.zeros(0), np.zeros(0), np.zeros(0, bool), np.zeros(0, bool),
-                         0.0, 0.0, ops, error)
     design = plug.Proxy._design(plug)
-    bounds = plug.Proxy._bounds(plug, design, op_vcarve.tool_vbit(plug.ToolController))
+    bounds = plug.Proxy._bounds(plug, design, op_vcarve.tool_vbit(plug.ToolController)) if design else []
+    if not bounds:
+        return refuse(f"{plug.Label}: no design")
     centre = Part.makeCompound(design).BoundBox.Center
     bb = Part.makeCompound(bounds).BoundBox
     x, y = np.meshgrid(np.arange(bb.XMin, bb.XMax + grid / 2, grid), np.arange(bb.YMin, bb.YMax + grid / 2, grid))
@@ -184,5 +190,5 @@ def check(plug, grid=0.25, tol=0.02) -> FitResult:
     collisions = gap < -tol
     in_pocket = z < -1e-3
     voids = in_pocket & (gap > G + max(tol, 0.1))
-    return FitResult(q, grid, gap, z, collisions, voids, float(gap.min(initial=0)),
-                     float(gap[in_pocket].max(initial=0)), ops)
+    return FitResult(q, grid, gap, z, collisions, voids, float(gap[collisions].min(initial=0)),
+                     float(gap[voids].max(initial=0)), ops)

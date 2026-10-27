@@ -10,7 +10,7 @@ import Path
 
 from fit import make_inlay, seated
 from test_op_vcarve import L_SHAPE, RECT, RING
-from vcarve_flat import fit
+from vcarve_flat import fit as fitcheck
 from vcarve_flat.fit import cut_height
 
 BAR3 = [(0, 24), (30, 24), (30, 27), (0, 27)]
@@ -167,50 +167,71 @@ class CheckTests(unittest.TestCase):
 
     def test_check_fits(self):
         n = make_inlay(self.doc, LOOPS, tip=0)
-        r = fit.check(n.plug)
+        r = fitcheck.check(n.plug)
         self.assertIsNone(r.error)
         self.assertEqual(r.grid, 0.25)
         self.assertEqual(r.points.shape, (len(r.gap), 2))
         self.assertGreater(len(r.gap), 10000)
         self.assertEqual({o.Name for o in r.ops}, {o.Name for o in (n.vc, n.pocket_clr, n.plug, n.clr)})
         self.assertFalse(r.collisions.any(), r.points[r.collisions])
-        self.assertGreater(r.worst_collision, -TOL)
+        self.assertEqual(r.worst_collision, 0)
+        self.assertEqual(r.worst_void, r.gap[r.voids].max(initial=0))
         # the points are the mirrors of the plug's bound: none lies far outside the design bbox (0..80, 0..34)
         self.assertLess(np.abs(r.points - CENTRE).max(axis=0)[0], 40 + 15)
 
     def test_check_finds_collision(self):
         n = make_inlay(self.doc, LOOPS, tip=1, ridge=False)
-        r = fit.check(n.plug)
+        r = fitcheck.check(n.plug)
         self.assertIsNone(r.error)
         self.assertTrue(r.collisions.any())
         self.assertLess(r.worst_collision, -0.1)
+        self.assertEqual(r.worst_collision, r.gap.min())
         np.testing.assert_array_equal(r.collisions, r.gap < -0.02)
 
     def test_check_ring(self):
         """An island left in the margin ring rests on the board around the pocket."""
         n = make_inlay(self.doc, LOOPS, tip=0)
-        n.clr.Active = False  # not recomputed: the plug op still leaves the ring to it
-        r = fit.check(n.plug)
+        n.clr.Path = Path.Path(n.clr.Path.Commands[:len(n.clr.Path.Commands) // 2])
+        n.clr.purgeTouched()
+        r = fitcheck.check(n.plug)
+        self.assertIsNone(r.error)
+        self.assertTrue((r.collisions & (r.z == 0)).any())
+
+    def test_check_refuses_touched(self):
+        n = make_inlay(self.doc, LOOPS, tip=0)
+        n.clr.Active = False
+        r = fitcheck.check(n.plug, grid=1)
+        self.assertRegex(r.error, ": out of date, recompute it first$")
+        self.assertEqual(len(r.points), 0)
+        self.doc.recompute()
+        r = fitcheck.check(n.plug, grid=1)
         self.assertIsNone(r.error)
         self.assertNotIn(n.clr, r.ops)
-        self.assertTrue((r.collisions & (r.z == 0)).any())
+        self.assertFalse((r.collisions & (r.z == 0)).any())
+
+    def test_check_guards(self):
+        n = make_inlay(self.doc, LOOPS, tip=0)
+        with mock.patch.object(n.plug.Proxy, "_design", return_value=[]):
+            self.assertEqual(fitcheck.check(n.plug).error, f"{n.plug.Label}: no design")
+        n.plug.PocketOp = None
+        self.assertEqual(fitcheck.check(n.plug).error, f"{n.plug.Label}: no pocket op linked")
 
     def test_check_refuses_empty_paths(self):
         n = make_inlay(self.doc, LOOPS, tip=0)
         n.plug.Active = False
         self.doc.recompute()
-        r = fit.check(n.plug)
+        r = fitcheck.check(n.plug)
         self.assertEqual(r.error, f"{n.plug.Label}: no toolpath, recompute it first")
         self.assertEqual(len(r.points), 0)
 
     def test_signature_changes(self):
         n = make_inlay(self.doc, LOOPS, tip=0)
-        ops = fit.check(n.plug, grid=2).ops
-        before = fit.signature(ops)
-        self.assertEqual(fit.signature(ops), before)
+        ops = fitcheck.check(n.plug, grid=2).ops
+        before = fitcheck.signature(ops)
+        self.assertEqual(fitcheck.signature(ops), before)
         n.plug.GlueGap = 0.3
         self.doc.recompute()
-        self.assertNotEqual(fit.signature(ops), before)
+        self.assertNotEqual(fitcheck.signature(ops), before)
 
 
 if __name__ == "__main__":
