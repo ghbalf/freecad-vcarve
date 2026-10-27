@@ -30,6 +30,10 @@ class InlayDialog(QtGui.QDialog):
         self.vbit, self.endmill = QtGui.QComboBox(), QtGui.QComboBox()
         self.vbit.addItems([tc.Label for tc in self.vtcs])
         self.endmill.addItems([tc.Label for tc in self.etcs])
+        self.rest = QtGui.QComboBox()
+        self.rest.addItem(translate("CAM_VCarve", "None"), None)
+        for tc in self.etcs:
+            self.rest.addItem(tc.Label, tc)
         self.pocket, self.glue = _mm(0.1, 100), _mm(0.01, 100)
         self.boundary = QtGui.QComboBox()
         for key, text in _BOUNDARY:
@@ -43,12 +47,14 @@ class InlayDialog(QtGui.QDialog):
         self.buttons = QtGui.QDialogButtonBox(QtGui.QDialogButtonBox.Ok | QtGui.QDialogButtonBox.Cancel)
         self.buttons.accepted.connect(self.accept)
         self.buttons.rejected.connect(self.reject)
-        for label, widget in (("V-bit", self.vbit), ("End mill", self.endmill), ("Pocket depth", self.pocket),
+        for label, widget in (("V-bit", self.vbit), ("End mill", self.endmill), ("Rest end mill", self.rest), ("Pocket depth", self.pocket),
                               ("Glue gap", self.glue), ("Plug boundary", self.boundary)):
             form.addRow(translate("CAM_VCarve", label), widget)
         for widget in (self.ridge, self.error, hint, self.buttons):
             form.addRow(widget)
         self.vbit.currentIndexChanged.connect(self._reset)
+        self.endmill.currentIndexChanged.connect(self._check)
+        self.rest.currentIndexChanged.connect(self._check)
         self.pocket.valueChanged.connect(self._check)
         self.glue.valueChanged.connect(self._check)
         self._reset()
@@ -68,10 +74,14 @@ class InlayDialog(QtGui.QDialog):
         if p - g >= vbit.cone_height:
             errors.append(translate("CAM_VCarve", "Pocket depth - Glue Gap must stay below the V-bit cone height "
                                     "{:.2f} mm.").format(vbit.cone_height))
+        rest = self.rest.currentData()
+        if rest is not None and rest.Tool.Diameter >= self.etcs[self.endmill.currentIndex()].Tool.Diameter:
+            errors.append(translate("CAM_VCarve", "The rest end mill must be smaller than the end mill"))
         self.error.setText("\n".join(errors))
         self.buttons.button(QtGui.QDialogButtonBox.Ok).setEnabled(not errors)
 
     def values(self):
         return dict(vtc=self.vtcs[self.vbit.currentIndex()], etc=self.etcs[self.endmill.currentIndex()],
                     pocket_depth=self.pocket.value(), glue_gap=self.glue.value(),
-                    boundary=self.boundary.currentData(), ridge=self.ridge.isChecked())
+                    boundary=self.boundary.currentData(), ridge=self.ridge.isChecked(),
+                    rest_etc=self.rest.currentData())

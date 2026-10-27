@@ -6,7 +6,9 @@ import FreeCAD as App
 import Part
 import Path
 
-from helpers import make_job, make_sketch
+import Path.Tool.Controller
+
+from helpers import _tool, make_job, make_sketch
 from test_op_vcarve import RECT
 from vcarve_flat.compat import tool_shape
 from vcarve_flat.inlay import create_inlay
@@ -139,6 +141,35 @@ class InlayTests(unittest.TestCase):
     def test_wrong_tool_shape(self):
         with self.assertRaises(ValueError):
             create_inlay(self.job, self.sk, self.etc, self.vtc, 3.0, 0.2)
+
+    def rest_tc(self, diameter):
+        tc = Path.Tool.Controller.Create("Rest", tool=_tool(self.doc, "5mm_Endmill"))
+        tc.Tool.Diameter, tc.ToolNumber = diameter, 7
+        return tc
+
+    def test_inlay_rest_end_mill(self):
+        rest_tc = self.rest_tc(1.0)
+        qjob, pocket, pjob, plug_pair = self.build(rest_etc=rest_tc)
+        for job, (clr, carve) in ((qjob, pocket), (pjob, plug_pair)):
+            ops = list(job.Operations.Group)
+            self.assertEqual(len(ops), 3)
+            self.assertEqual((ops[0], ops[2]), (clr, carve))
+            rest = ops[1]
+            self.assertTrue(rest.RestOnly and not clr.RestOnly)
+            self.assertEqual(rest.VCarveOp, carve)
+            self.assertEqual(rest.StepDown, clr.StepDown)
+            self.assertIn(rest.ToolController, job.Tools.Group)
+            self.assertEqual(len(job.Tools.Group), 3)
+            self.assertIsNot(rest.ToolController.Tool, rest_tc.Tool)
+            self.assertEqual(rest.ToolController.Tool.Diameter, rest_tc.Tool.Diameter)
+            self.assertEqual(rest.ToolController.ToolNumber, 7)
+        self.assertEqual([o.Name for o in self.doc.Objects if "Invalid" in o.State or "Error" in o.State], [])
+
+    def test_inlay_rest_not_smaller(self):
+        for d in (5.0, 6.0):
+            with self.assertRaisesRegex(ValueError, "must be smaller"):
+                create_inlay(self.job, self.sk, self.vtc, self.etc, 3.0, 0.2, rest_etc=self.rest_tc(d))
+        self.assertEqual(len([o for o in self.doc.Objects if hasattr(o, "Operations")]), 1)
 
 
 if __name__ == "__main__":

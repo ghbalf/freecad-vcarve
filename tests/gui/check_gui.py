@@ -200,6 +200,12 @@ def main():
     assert abs(dialog.pocket.value() - p2) < 0.01 and abs(dialog.glue.value() - g2) < 0.01, "V-bit change keeps P and G"
     assert ok.isEnabled() and not dialog.error.text()
 
+    assert dialog.rest.itemText(0) == "None" and dialog.rest.count() == 2 and dialog.values()["rest_etc"] is None
+    dialog.rest.setCurrentIndex(1)  # the end mill itself
+    assert not ok.isEnabled() and "smaller" in dialog.error.text(), "an equal rest end mill is accepted"
+    dialog.rest.setCurrentIndex(0)
+    assert ok.isEnabled() and not dialog.error.text()
+
     ops0, tools0 = list(job0.Operations.Group), list(job0.Tools.Group)
     seen = []
     with mock.patch.object(inlay_dialog.InlayDialog, "exec_",
@@ -208,7 +214,7 @@ def main():
         Gui.runCommand("CAM_VCarveInlay")
         QtGui.QApplication.processEvents()
     assert len(warnings) == 1 and len(seen) == 1, warnings
-    assert set(seen[0]) == {"vtc", "etc", "pocket_depth", "glue_gap", "boundary", "ridge"}, seen
+    assert set(seen[0]) == {"vtc", "etc", "pocket_depth", "glue_gap", "boundary", "ridge", "rest_etc"}, seen
     jobs = PathUtils.GetJobs()
     assert len(jobs) == 3, [j.Label for j in jobs]
     assert (list(job0.Operations.Group), list(job0.Tools.Group)) == (ops0, tools0), "Inlay changed the selected Job"
