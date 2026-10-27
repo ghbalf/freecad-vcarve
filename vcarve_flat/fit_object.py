@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# Authors: alf and Claude (Anthropic)
 """The Fit object: the marks of a Check Inlay Fit run, kept (never re-simulated) until the checked paths change."""
 import FreeCAD as App
 import numpy as np

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# Authors: alf and Claude (Anthropic)
 """create_inlay: sets up a V-carve inlay, a pocket Job and a plug Job, each with its pair."""
 import FreeCAD as App
 import Path

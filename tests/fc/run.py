@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# Authors: alf and Claude (Anthropic)
 """Integration entry point: freecadcmd tests/fc/run.py"""
 import os
 import sys

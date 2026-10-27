@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# Authors: alf and Claude (Anthropic)
 import importlib
 import os
 import tempfile

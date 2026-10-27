@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# Authors: alf and Claude (Anthropic)
 """FreeCAD's progress indicator with Cancel, for long computations on the GUI thread.
 
 Inside doc.recompute() FreeCAD's own sequencer runs and ignores a nested ProgressIndicator entirely

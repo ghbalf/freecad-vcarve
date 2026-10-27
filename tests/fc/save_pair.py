@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# Authors: alf and Claude (Anthropic)
 """freecadcmd: save a Job with a V-carve pair and an inlay to $VCARVE_DOC (step 1 of the reopen test)."""
 import os
 import sys

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# Authors: alf and Claude (Anthropic)
 """V-bit depth math and distance helpers (numpy only, no FreeCAD)."""
 import math
 from dataclasses import dataclass

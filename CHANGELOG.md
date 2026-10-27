@@ -2,7 +2,7 @@
 
 All notable changes to V-Carve Flat. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.3.0] - 2026-10-27
 
 ### Added
 - **Check Inlay Fit** command: simulates the seated plug from both Jobs' toolpaths and creates a Fit
@@ -56,4 +56,5 @@ All notable changes to V-Carve Flat. The format follows [Keep a Changelog](https
   step over, allowance), and a command that creates both ops as a pair.
 - GUI commands, task panels and CAM toolbar integration; tested on FreeCAD 1.0.2, 1.1.x and 26.3.
 
+[0.3.0]: https://github.com/ghbalf/freecad-vcarve/releases/tag/v0.3.0
 [0.2.0]: https://github.com/ghbalf/freecad-vcarve/releases/tag/v0.2.0

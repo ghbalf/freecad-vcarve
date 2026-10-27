@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# Authors: alf and Claude (Anthropic)
 """Offscreen GUI check, run as: freecad tests/gui/check_gui.py (see tests/test_gui.py).
 Prints GUI-CHECK-OK and exits 0 on success; prints the traceback and exits 1 otherwise."""
 import os

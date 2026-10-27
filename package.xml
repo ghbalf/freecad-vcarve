@@ -3,9 +3,11 @@
 <package format="1" xmlns="https://wiki.freecad.org/Package_Metadata">
   <name>V-Carve Flat</name>
   <description>V-carve 2D sketches with a flat depth, an end-mill clearance operation and V-carve inlays (pocket and mirrored plug) for FreeCAD CAM.</description>
-  <version>0.2.0</version>
-  <date>2026-10-26</date>
+  <version>0.3.0</version>
+  <date>2026-10-27</date>
   <maintainer email="alfred@mickautsch.de">alf</maintainer>
+  <author email="alfred@mickautsch.de">alf</author>
+  <author>Claude (Anthropic)</author>
   <license file="LICENSE">LGPL-2.1-or-later</license>
   <content>
     <workbench>

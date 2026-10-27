@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# Authors: alf and Claude (Anthropic)
 """V-Carve Flat GUI hook: lightweight commands plus a CAM toolbar/menu manipulator.
 The CAM machinery (vcarve_flat.gui.commands) is imported only when a command runs.
 FreeCAD execs this file with separate globals and locals: methods must not use its top-level names."""

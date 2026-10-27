@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# Authors: alf and Claude (Anthropic)
 """Medial axis of a face (Path.Voronoi) -> V-carve polylines with flat-depth clamping."""
 import math
 

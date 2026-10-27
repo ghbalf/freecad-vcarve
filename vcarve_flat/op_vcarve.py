@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# Authors: alf and Claude (Anthropic)
 """V-Carve (flat depth) CAM operation: listed sketches -> V-bit toolpaths."""
 from dataclasses import dataclass
 

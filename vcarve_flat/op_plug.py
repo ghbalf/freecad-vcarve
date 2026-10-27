@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# Authors: alf and Claude (Anthropic)
 """V-Carve Plug operation: carves the mirrored design of a V-Carve Flat pocket op as a raised inlay plug.
 
 The plug is v1's carving applied to the complement of the mirrored letters, from a virtual carve

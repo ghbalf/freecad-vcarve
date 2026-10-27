@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# Authors: alf and Claude (Anthropic)
 """The V-Carve Inlay dialog: the few numbers that set up a pocket and its plug."""
 import FreeCAD as App
 import FreeCADGui as Gui

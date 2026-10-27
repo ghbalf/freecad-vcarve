@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# Authors: alf and Claude (Anthropic)
 """Inlay test helpers: build a pocket Job and a plug Job, and seat the plug on given points."""
 import math
 from types import SimpleNamespace

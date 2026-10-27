@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# Authors: alf and Claude (Anthropic)
 """FreeCAD-version differences in tool descriptions (no FreeCAD import)."""
 import os
 

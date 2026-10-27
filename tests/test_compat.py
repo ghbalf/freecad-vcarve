@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# Authors: alf and Claude (Anthropic)
 from types import SimpleNamespace as NS
 
 from vcarve_flat.compat import tool_shape

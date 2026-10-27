@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# Authors: alf and Claude (Anthropic)
 """freecadcmd, fresh process with nothing imported: reopen $VCARVE_DOC and print the op proxies and check the plug path."""
 import os
 

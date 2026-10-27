@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# Authors: alf and Claude (Anthropic)
 """Selection gate for the V-carve ops: sketches (or Job clones of them) and their edges."""
 from ..sketches import is_sketch_base
 

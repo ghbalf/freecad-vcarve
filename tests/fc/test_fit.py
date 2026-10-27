@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# Authors: alf and Claude (Anthropic)
 """Inlay fit: the flipped plug seated in the pocket, simulated from both Jobs' paths on cross-sections."""
 import math
 import os

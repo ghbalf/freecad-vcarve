@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# Authors: alf and Claude (Anthropic)
 """V-Carve Clearance operation: clears the flat floor of a linked V-carve op with an end mill."""
 import FreeCAD as App
 import Path

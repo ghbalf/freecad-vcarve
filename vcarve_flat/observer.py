@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# Authors: alf and Claude (Anthropic)
 """Touches the ops of a clearance chain when a clearance op is deleted or the Job's ops are reordered:
 neither change reaches all of the chain's ops through their onChanged."""
 import FreeCAD as App

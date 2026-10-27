@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# Authors: alf and Claude (Anthropic)
 """GUI commands creating the V-Carve ops and checking an inlay's fit, and their view providers.
 
 PathOpGui.SetupOperation/Create hardcode CAM's own ViewProvider, so create() mirrors Create

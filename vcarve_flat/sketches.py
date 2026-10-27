@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# Authors: alf and Claude (Anthropic)
 """Sketch (or Job clone of a sketch) -> closed loops -> planar faces."""
 from typing import Sequence
 

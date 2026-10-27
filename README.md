@@ -214,6 +214,10 @@ To get an AppRun, extract a FreeCAD AppImage: `./FreeCAD_x.AppImage --appimage-e
 `squashfs-root/AppRun`. The FreeCAD tests run with a throwaway HOME and user directories, so your
 own FreeCAD configuration is never read or modified.
 
+## Authors
+
+alf and Claude (Anthropic), who designed, wrote and tested this addon together.
+
 ## License
 
 LGPL-2.1-or-later, see `LICENSE`. This is a clean-room implementation, inspired by F-Engrave and

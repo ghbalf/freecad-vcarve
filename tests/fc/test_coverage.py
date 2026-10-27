@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
+# Authors: alf and Claude (Anthropic)
 """Core invariant: V-bit rest area + end-mill swept area = the whole flat floor."""
 import math
 import unittest
