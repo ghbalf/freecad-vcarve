@@ -11,6 +11,7 @@ import FreeCAD as App
 import Path
 
 _PERIOD = 0.1  # s between processing GUI events
+_SHOW = 2.5  # s after which FreeCAD's bar is up (it shows a sequencer 2 s after its start)
 _indicator = None  # the outermost task's
 _gui = None  # (poll, remove) in the GUI
 _depth = 0
@@ -21,10 +22,13 @@ class Cancelled(Exception):
     """The user cancelled the computation."""
 
 
-def _watch_gui():
+def _watch_gui(restart):
     """(poll, remove): poll(beat) beats the indicator and processes pending events at most every _PERIOD, and
     at most a quarter of the time when that is slow (offscreen, FreeCAD 1.1 takes 0.35 s); an application event filter,
-    installed after FreeCAD's sequencer's, turns Esc into Cancel."""
+    installed after FreeCAD's sequencer's, turns Esc into Cancel. FreeCAD 26's Part booleans stop the running
+    sequencer (their Part::ProgressIndicator does), which hides the bar for the rest of the task: once it should be
+    up, poll calls restart and shows the bar again whenever it is hidden outside a recompute."""
+    import FreeCADGui as Gui
     from PySide import QtCore, QtGui
 
     class Esc(QtCore.QObject):
@@ -37,12 +41,18 @@ def _watch_gui():
 
     app, esc, due = QtGui.QApplication.instance(), Esc(), [time.monotonic() + _PERIOD]
     app.installEventFilter(esc)
+    bar = next(iter(Gui.getMainWindow().statusBar().findChildren(QtGui.QProgressBar)), None)
+    up = time.monotonic() + _SHOW
 
     def poll(beat):
         start = time.monotonic()
         if start >= due[0]:
             beat()
             app.processEvents()
+            if bar is not None and start >= up and not bar.isVisible() and not _recomputing():
+                restart()
+                app.processEvents()  # the stop's queued hide
+                bar.show()
             end = time.monotonic()
             due[0] = end + max(_PERIOD, min(3 * (end - start), 1.0))
     return poll, lambda: app.removeEventFilter(esc)
@@ -81,7 +91,7 @@ def task(text):
             indicator = App.Base.ProgressIndicator()
             try:
                 indicator.start(text, 0)
-                _gui = _watch_gui()
+                _gui = _watch_gui(lambda: (indicator.stop(), indicator.start(text, 0)))
             except BaseException:
                 indicator.stop()
                 raise
