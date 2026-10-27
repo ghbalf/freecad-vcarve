@@ -8,8 +8,10 @@ import FreeCAD as App
 import numpy as np
 import Path
 
-from fit import cut_height, make_inlay, seated
+from fit import make_inlay, seated
 from test_op_vcarve import L_SHAPE, RECT, RING
+from vcarve_flat import fit
+from vcarve_flat.fit import cut_height
 
 BAR3 = [(0, 24), (30, 24), (30, 27), (0, 27)]
 LETTERS = [[(34, 24), (44, 24), (44, 34), (34, 34)], [(44.3, 24), (54.3, 24), (54.3, 34), (44.3, 34)]]
@@ -151,6 +153,64 @@ class FitTests(unittest.TestCase):
         pts = pts[np.hypot(pts[:, 0] - 70, pts[:, 1] - 10) < 12.5]
         gap = seated(n, pts, (42.5, 10)).gap  # the design bbox x 0..85
         self.assertGreater(gap.min(), -TOL, pts[gap.argmin()])
+
+
+class CheckTests(unittest.TestCase):
+    def setUp(self):
+        self.doc = App.newDocument("check")
+        mock.patch.object(Path.Log, "warning").start()
+        mock.patch.object(Path.Log, "error").start()
+        self.addCleanup(mock.patch.stopall)
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def test_check_fits(self):
+        n = make_inlay(self.doc, LOOPS, tip=0)
+        r = fit.check(n.plug)
+        self.assertIsNone(r.error)
+        self.assertEqual(r.grid, 0.25)
+        self.assertEqual(r.points.shape, (len(r.gap), 2))
+        self.assertGreater(len(r.gap), 10000)
+        self.assertEqual({o.Name for o in r.ops}, {o.Name for o in (n.vc, n.pocket_clr, n.plug, n.clr)})
+        self.assertFalse(r.collisions.any(), r.points[r.collisions])
+        self.assertGreater(r.worst_collision, -TOL)
+        # the points are the mirrors of the plug's bound: none lies far outside the design bbox (0..80, 0..34)
+        self.assertLess(np.abs(r.points - CENTRE).max(axis=0)[0], 40 + 15)
+
+    def test_check_finds_collision(self):
+        n = make_inlay(self.doc, LOOPS, tip=1, ridge=False)
+        r = fit.check(n.plug)
+        self.assertIsNone(r.error)
+        self.assertTrue(r.collisions.any())
+        self.assertLess(r.worst_collision, -0.1)
+        np.testing.assert_array_equal(r.collisions, r.gap < -0.02)
+
+    def test_check_ring(self):
+        """An island left in the margin ring rests on the board around the pocket."""
+        n = make_inlay(self.doc, LOOPS, tip=0)
+        n.clr.Active = False  # not recomputed: the plug op still leaves the ring to it
+        r = fit.check(n.plug)
+        self.assertIsNone(r.error)
+        self.assertNotIn(n.clr, r.ops)
+        self.assertTrue((r.collisions & (r.z == 0)).any())
+
+    def test_check_refuses_empty_paths(self):
+        n = make_inlay(self.doc, LOOPS, tip=0)
+        n.plug.Active = False
+        self.doc.recompute()
+        r = fit.check(n.plug)
+        self.assertEqual(r.error, f"{n.plug.Label}: no toolpath, recompute it first")
+        self.assertEqual(len(r.points), 0)
+
+    def test_signature_changes(self):
+        n = make_inlay(self.doc, LOOPS, tip=0)
+        ops = fit.check(n.plug, grid=2).ops
+        before = fit.signature(ops)
+        self.assertEqual(fit.signature(ops), before)
+        n.plug.GlueGap = 0.3
+        self.doc.recompute()
+        self.assertNotEqual(fit.signature(ops), before)
 
 
 if __name__ == "__main__":
