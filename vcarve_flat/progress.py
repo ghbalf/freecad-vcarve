@@ -42,7 +42,7 @@ def _watch_gui():
             beat()
             app.processEvents()
             end = time.monotonic()
-            due[0] = end + max(_PERIOD, 3 * (end - start))
+            due[0] = end + max(_PERIOD, min(3 * (end - start), 1.0))
     return poll, lambda: app.removeEventFilter(esc)
 
 
