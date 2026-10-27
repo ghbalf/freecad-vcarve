@@ -20,7 +20,7 @@ from PySide import QtCore, QtGui
 # The addon link made by tests/test_gui.py; gives the test helpers without relying on __file__.
 sys.path.insert(0, os.path.join(os.environ["FREECAD_USER_HOME"], "Mod", "freecad-vcarve", "tests", "fc"))
 NAMES = ["CAM_VCarveFlat", "CAM_VCarveClearance", "CAM_VCarvePair", "CAM_VCarvePlug", "CAM_VCarveInlay",
-         "CAM_VCarveFit"]
+         "CAM_VCarveFit", "CAM_VCarvePhoto"]
 
 
 def toolbar_entries(title):
@@ -181,6 +181,53 @@ def check_fit(doc, plug):
     QtGui.QApplication.processEvents()
     assert not made.Shape.Faces and isinstance(made.ViewObject.Proxy, commands.FitViewProvider)
     doc.removeObject(made.Name)
+
+
+def check_photo(doc, job):
+    """V-Carve Photo: the panel lists the image plane, the fields follow the pattern, OK carves."""
+    from helpers import make_plane
+    from vcarve_flat.gui import panels
+    from vcarve_flat.op_photo import ObjectVCarvePhoto
+    plane = make_plane(doc, os.path.join(tempfile.mkdtemp(), "photo.png"), 20, 10, np.zeros((4, 8, 3), np.uint8))
+    plane.Placement.Base = App.Vector(20, 10, 0)  # over the Job's 40 x 20 sketch
+    doc.recompute()
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(job.Model.Group[0])
+    Gui.runCommand("CAM_VCarvePhoto")
+    QtGui.QApplication.processEvents()
+    op = job.Operations.Group[-1]
+    assert isinstance(op.Proxy, ObjectVCarvePhoto), op.Label
+    check_icons([op])
+    panel = op.ViewObject.Proxy.panel
+    page = next(p for p in panel.featurePages if isinstance(p, panels.PhotoOpPage))
+    form = page.form
+    combo = form.ImagePlane
+    assert plane.Label in [combo.itemText(i) for i in range(combo.count())], combo.count()
+    combo.setCurrentIndex(combo.findData(plane.Name))
+
+    def hidden():
+        return {p for p in ("Angle", "HatchAngle", "LineSpacing", "VectorsBox") if getattr(form, p).isHidden()}
+    assert hidden() == {"HatchAngle", "VectorsBox"}, hidden()
+    form.Pattern.setCurrentText("Hatch")
+    assert hidden() == {"VectorsBox"}, hidden()
+    form.Pattern.setCurrentText("Custom")
+    assert hidden() == {"Angle", "HatchAngle", "LineSpacing"}, hidden()
+    Gui.Selection.clearSelection()
+    Gui.Selection.addSelection(doc.getObject("Letters"))
+    form.addVectors.click()
+    assert list(op.Vectors) == [doc.getObject("Letters")], [o.Label for o in op.Vectors]
+    form.Vectors.item(0).setSelected(True)
+    form.removeVectors.click()
+    assert not op.Vectors and not form.Vectors.count(), [o.Label for o in op.Vectors]
+    Gui.Selection.clearSelection()
+    form.Pattern.setCurrentText("Lines")
+    for p in panel.featurePages:
+        p.setDirty()
+    panel.accept()
+    QtGui.QApplication.processEvents()
+    assert op.ImagePlane == plane and op.Pattern == "Lines", (op.ImagePlane, op.Pattern)
+    assert any(c.Name in ("G1", "G01") for c in op.Path.Commands), "no cut after OK"
+    assert not Gui.Control.activeDialog(), "the photo panel stayed open"
 
 
 def main():
@@ -405,6 +452,8 @@ def main():
     plug.ViewObject.Proxy.panel.accept()
     QtGui.QApplication.processEvents()
     assert plug.PocketOp == pocket, "OK lost PocketOp"
+
+    check_photo(doc, PathUtils.GetJobs()[0])
 
     job = PathUtils.GetJobs()[0]  # last: after its panel, 1.0.2 hangs closing the next one
     job.ViewObject.Document.setEdit(job.ViewObject, 0)  # its Setup tab lists the registered ops' defaults

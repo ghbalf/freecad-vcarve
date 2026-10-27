@@ -21,9 +21,13 @@ from .toolpath import paths_to_commands
 _GROUP = "V-Carve Photo"
 PATTERNS = ["Lines", "Hatch", "Custom"]
 
+def _deg(value) -> App.Units.Quantity:
+    return App.Units.Quantity(value, App.Units.Angle)  # a Quantity for the setup sheet, like mm()
+
+
 _PROPS = [  # (type, name, default, tooltip)
-    ("App::PropertyAngle", "Angle", 45.0, "Direction of the lines, -90 to 90 degrees from the X axis"),
-    ("App::PropertyAngle", "HatchAngle", 135.0, "Direction of the second line set of the Hatch pattern"),
+    ("App::PropertyAngle", "Angle", _deg(45), "Direction of the lines, -90 to 90 degrees from the X axis"),
+    ("App::PropertyAngle", "HatchAngle", _deg(135), "Direction of the second line set of the Hatch pattern"),
     ("App::PropertyLength", "LineSpacing", mm(2.5), "Distance between neighbouring lines"),
     ("App::PropertyLength", "MaxDepth", mm(2), "Depth of black, below Start Depth"),
     ("App::PropertyLength", "MinDepth", mm(0.05), "The bit lifts out where the depth is less than this"),
@@ -59,12 +63,12 @@ class ObjectVCarvePhoto(PathOp.ObjectOp):
                 | PathOp.FeatureCoolant)
 
     def initOperation(self, obj):
-        obj.addProperty("App::PropertyLinkGlobal", "ImagePlane", _GROUP, "The image plane to carve")
+        obj.addProperty("App::PropertyLink", "ImagePlane", _GROUP, "The image plane to carve")
         obj.addProperty("App::PropertyEnumeration", "Pattern", _GROUP, "Lines, two crossed line sets, or the "
                         "Vectors objects' edges")
         obj.Pattern = PATTERNS
         obj.Pattern = PATTERNS[0]
-        obj.addProperty("App::PropertyLinkListGlobal", "Vectors", _GROUP,
+        obj.addProperty("App::PropertyLinkList", "Vectors", _GROUP,
                         "Sketches or imported SVG paths to carve along (Custom pattern)")
         for typ, name, value, tip in _PROPS:
             obj.addProperty(typ, name, _GROUP, tip)

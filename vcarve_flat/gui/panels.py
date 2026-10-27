@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 # Authors: alf and Claude (Anthropic)
-"""Task panel pages of the V-Carve Flat and V-Carve Clearance operations, built in code."""
+"""Task panel pages of the V-Carve operations, built in code."""
 import FreeCAD as App
 import FreeCADGui as Gui
 import Path.Base.Gui.Util as PathGuiUtil
 import Path.Op.Gui.Base as PathOpGui
 import Path.Op.Gui.Vcarve as PathVcarveGui
 import PathScripts.PathUtils as PathUtils
-from PySide import QtGui
+from PySide import QtCore, QtGui
 
 from ..op_vcarve import ObjectVCarveFlat
 from .selection import to_clones
@@ -237,3 +237,119 @@ class PlugOpPage(_Page):
     def getSignalsForUpdate(self, obj):
         return super().getSignalsForUpdate(obj) + [
             getattr(self.form, p).currentIndexChanged for p in self._ENUMS] + [self.form.RidgePass.stateChanged]
+
+
+class PhotoOpPage(_Page):
+    """The photo op's image, pattern and tone fields; the line fields follow the pattern."""
+    _LINES = ("Angle", "LineSpacing")  # shown for Lines and Hatch
+
+    def addFields(self, form, grid):
+        def labelled(prop):  # the label of the row just added
+            self.labels[prop] = grid.itemAtPosition(grid.rowCount() - 1, 0).widget()
+
+        self.labels = {}
+        form.ImagePlane = _row(grid, translate("CAM_VCarve", "Image Plane"), QtGui.QComboBox())
+        form.Pattern = _row(grid, translate("CAM_VCarve", "Pattern"), QtGui.QComboBox())
+        for prop, label in (("Angle", "Angle"), ("HatchAngle", "Hatch Angle"), ("LineSpacing", "Line Spacing")):
+            self.quantity(form, grid, prop, translate("CAM_VCarve", label))
+            labelled(prop)
+        box = QtGui.QWidget()
+        lay = QtGui.QGridLayout(box)
+        lay.setContentsMargins(0, 0, 0, 0)
+        form.Vectors = QtGui.QListWidget()
+        form.Vectors.setSelectionMode(QtGui.QAbstractItemView.ExtendedSelection)
+        form.addVectors = QtGui.QPushButton(translate("CAM_VCarve", "Add selected"))
+        form.removeVectors = QtGui.QPushButton(translate("CAM_VCarve", "Remove"))
+        lay.addWidget(form.Vectors, 0, 0, 1, 2)
+        lay.addWidget(form.addVectors, 1, 0)
+        lay.addWidget(form.removeVectors, 1, 1)
+        form.VectorsBox = _row(grid, translate("CAM_VCarve", "Vectors"), box)
+        labelled("VectorsBox")
+        for prop, label in (("MaxDepth", "Max Depth"), ("MinDepth", "Min Depth"), ("SampleStep", "Sample Step"),
+                            ("Tolerance", "Tolerance")):
+            self.quantity(form, grid, prop, translate("CAM_VCarve", label))
+        form.Contrast = _row(grid, translate("CAM_VCarve", "Contrast"), _double(0, 0, 1000, 10))
+        form.Contrast.setSuffix(" %")
+        form.Invert = _row(grid, translate("CAM_VCarve", "Invert"), QtGui.QCheckBox())
+
+    def _show_pattern(self, *_):
+        pattern = self.form.Pattern.currentText()
+        shown = {"Angle": pattern != "Custom", "LineSpacing": pattern != "Custom",
+                 "HatchAngle": pattern == "Hatch", "VectorsBox": pattern == "Custom"}
+        for prop, on in shown.items():
+            getattr(self.form, prop).setHidden(not on)
+            self.labels[prop].setHidden(not on)
+
+    def _vector_names(self):
+        vectors = self.form.Vectors
+        return [vectors.item(i).data(QtCore.Qt.UserRole) for i in range(vectors.count())]
+
+    def _add_vectors(self):
+        names = self._vector_names()
+        for o in Gui.Selection.getSelection():
+            shape = getattr(o, "Shape", None)
+            if shape is not None and shape.Edges and o.Name not in names:
+                item = QtGui.QListWidgetItem(o.Label)
+                item.setData(QtCore.Qt.UserRole, o.Name)
+                self.form.Vectors.addItem(item)
+                names.append(o.Name)
+        self.pageGetFields()
+
+    def _remove_vectors(self):
+        for item in self.form.Vectors.selectedItems():
+            self.form.Vectors.takeItem(self.form.Vectors.row(item))
+        self.pageGetFields()
+
+    def getFields(self, obj):
+        super().getFields(obj)
+        name = self.form.ImagePlane.currentData()
+        link = obj.Document.getObject(name) if name else None
+        if link is not None and obj.ImagePlane != link:
+            obj.ImagePlane = link
+        pattern = self.form.Pattern.currentText()
+        if pattern in obj.getEnumerationsOfProperty("Pattern") and obj.Pattern != pattern:
+            obj.Pattern = pattern
+        vectors = [o for o in map(obj.Document.getObject, self._vector_names()) if o is not None]
+        if vectors != list(obj.Vectors):
+            obj.Vectors = vectors
+        if obj.Contrast != self.form.Contrast.value():
+            obj.Contrast = self.form.Contrast.value()
+        if obj.Invert != self.form.Invert.isChecked():
+            obj.Invert = self.form.Invert.isChecked()
+
+    def setFields(self, obj):
+        super().setFields(obj)
+        combo, link = self.form.ImagePlane, obj.ImagePlane
+        planes = [o for o in obj.Document.Objects if o.TypeId == "Image::ImagePlane"]
+        if link not in planes:  # keep an unlisted (or empty) link instead of rewriting it
+            planes.insert(0, link)
+        combo.blockSignals(True)
+        combo.clear()
+        for plane in planes:
+            combo.addItem(plane.Label if plane else "", plane.Name if plane else "")
+        combo.setCurrentIndex(planes.index(link))
+        combo.blockSignals(False)
+        pattern = self.form.Pattern
+        pattern.blockSignals(True)
+        pattern.clear()
+        pattern.addItems(obj.getEnumerationsOfProperty("Pattern"))
+        pattern.setCurrentText(obj.Pattern)
+        pattern.blockSignals(False)
+        self.form.Vectors.clear()
+        for o in obj.Vectors:
+            item = QtGui.QListWidgetItem(o.Label)
+            item.setData(QtCore.Qt.UserRole, o.Name)
+            self.form.Vectors.addItem(item)
+        self.form.Contrast.setValue(obj.Contrast)
+        self.form.Invert.setChecked(obj.Invert)
+        self._show_pattern()
+
+    def getSignalsForUpdate(self, obj):
+        return super().getSignalsForUpdate(obj) + [
+            self.form.ImagePlane.currentIndexChanged, self.form.Pattern.currentIndexChanged,
+            self.form.Contrast.editingFinished, self.form.Invert.stateChanged]
+
+    def registerSignalHandlers(self, obj):
+        self.form.Pattern.currentIndexChanged.connect(self._show_pattern)
+        self.form.addVectors.clicked.connect(self._add_vectors)
+        self.form.removeVectors.clicked.connect(self._remove_vectors)

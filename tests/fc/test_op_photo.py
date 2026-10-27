@@ -3,6 +3,7 @@
 """The V-Carve Photo op: depth along lines, hatch and custom vectors follows an image plane's darkness."""
 import math
 import os
+import shutil
 import tempfile
 import time
 import unittest
@@ -59,6 +60,7 @@ class OpPhotoTests(unittest.TestCase):
 
     def tearDown(self):
         App.closeDocument(self.doc.Name)
+        shutil.rmtree(self.tmp, ignore_errors=True)
 
     def job_over(self, w=60, h=40):
         """A Job on a w x h x 10 mm box centred on the origin."""
@@ -195,6 +197,13 @@ class OpPhotoTests(unittest.TestCase):
         plane.Placement.Base = App.Vector(5, 0, 0)
         self.doc.recompute()
         self.assertAlmostEqual(runs(op)[0][:, 0].min(), x0 + 5, places=6)
+
+    def test_setup_sheet_prototype(self):
+        # The Job panel builds a prototype of every registered op; it knows only some property types.
+        import Path.Base.SetupSheet as PathSetupSheet
+        proto = PathSetupSheet._RegisteredOps["VCarvePhoto"].prototype("VCarvePhoto")
+        for name in op_photo.SetupProperties():
+            proto.getProperty(name).displayString()  # quantities need Quantity defaults, not floats
 
     def test_reopen(self):
         self.job_over()

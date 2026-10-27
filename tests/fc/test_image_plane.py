@@ -2,6 +2,7 @@
 # Authors: alf and Claude (Anthropic)
 """Reading a FreeCAD image plane: its pixels, and where it lies over the XY plane."""
 import os
+import shutil
 import tempfile
 import unittest
 
@@ -19,6 +20,7 @@ class ImagePlaneTest(unittest.TestCase):
 
     def tearDown(self):
         App.closeDocument(self.doc.Name)
+        shutil.rmtree(self.tmp, ignore_errors=True)
 
     def plane(self, w=20, h=10, pixels=None):
         return make_plane(self.doc, os.path.join(self.tmp, "img.png"), w, h, pixels)

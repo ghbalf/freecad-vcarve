@@ -14,7 +14,7 @@ import Path.Op.Gui.Base as PathOpGui
 import PathScripts.PathUtils as PathUtils
 from PySide import QtCore, QtGui
 
-from .. import fit_object, inlay, op_clearance, op_plug, op_vcarve  # noqa: F401  (op_plug: registers it with the setup sheet)
+from .. import fit_object, inlay, op_clearance, op_photo, op_plug, op_vcarve  # noqa: F401  (op_plug: registers it with the setup sheet)
 from ..compat import tool_shape
 from ..sketches import is_sketch_base
 from . import inlay_dialog, panels, selection
@@ -22,10 +22,11 @@ from . import inlay_dialog, panels, selection
 translate = App.Qt.translate
 ICONS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "resources", "icons")
 _ICON = {"VCarveOpPage": "vcarve_flat.svg", "ClearanceOpPage": "vcarve_clearance.svg",
-         "PlugOpPage": "vcarve_plug.svg"}
+         "PlugOpPage": "vcarve_plug.svg", "PhotoOpPage": "vcarve_photo.svg"}
 _NO_TC = {"VCarveFlat": "Add a V-bit tool controller to the job",
           "VCarveClearance": "Add an end mill tool controller to the job",
-          "VCarvePlug": "Add a V-bit tool controller to the job"}
+          "VCarvePlug": "Add a V-bit tool controller to the job",
+          "VCarvePhoto": "Add a V-bit tool controller to the job"}
 RED, BLUE = (1.0, 0.0, 0.0), (0.0, 0.3, 1.0)  # no 4th value: transparency on 1.0, alpha on 1.1+
 
 
@@ -233,7 +234,10 @@ def register():
                         "vcarve_clearance", "V-Carve Clearance", "Clear the flat floor of a V-carve op")
         plug = res("VCarvePlug", op_plug.Create, panels.PlugOpPage, "vcarve_plug",
                    "V-Carve Plug", "Carve the plug of a V-carve inlay")
+        photo = res("VCarvePhoto", op_photo.Create, panels.PhotoOpPage, "vcarve_photo",
+                    "V-Carve Photo", "V-carve an image plane as grooves whose depth follows its darkness")
         _COMMANDS.update(CAM_VCarveFlat=_OpCommand(vcarve), CAM_VCarveClearance=_OpCommand(clearance),
                          CAM_VCarvePair=_PairCommand(vcarve, clearance), CAM_VCarvePlug=_OpCommand(plug),
-                         CAM_VCarveInlay=_InlayCommand(vcarve, clearance, plug), CAM_VCarveFit=_FitCommand())
+                         CAM_VCarveInlay=_InlayCommand(vcarve, clearance, plug), CAM_VCarveFit=_FitCommand(),
+                         CAM_VCarvePhoto=_OpCommand(photo))
     return _COMMANDS
