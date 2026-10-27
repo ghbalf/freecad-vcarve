@@ -60,35 +60,45 @@ def _occ_offset(face, distance: float) -> list:
     return per_wire
 
 
+def corners(face):
+    """(vertex, unit tangents pointing away from it along its two edges, whether the face's own sector
+    there is under 180 degrees) at each corner of face."""
+    for v in face.Vertexes:
+        edges = face.ancestorsOfType(v, Part.Edge)
+        if len(edges) != 2:
+            continue
+        u = []
+        for e in edges:
+            p = e.parameterAt(v)
+            t = e.tangentAt(p).normalize()
+            u.append(-t if abs(p - e.LastParameter) < abs(p - e.FirstParameter) else t)
+        if u[0].dot(u[1]) < -0.9998:
+            continue  # straight on
+        yield v.Point, u, face.isInside(v.Point + (u[0] + u[1]).normalize() * 1e-3, 1e-9, True)
+
+
 def inner_corners(faces):
     """(vertex, unit tangents pointing away from it along its two edges) at each corner of faces
     whose outside is a sector under 180 degrees."""
     for face in faces:
-        for v in face.Vertexes:
-            edges = face.ancestorsOfType(v, Part.Edge)
-            if len(edges) != 2:
-                continue
-            u = []
-            for e in edges:
-                p = e.parameterAt(v)
-                t = e.tangentAt(p).normalize()
-                u.append(-t if abs(p - e.LastParameter) < abs(p - e.FirstParameter) else t)
-            if u[0].dot(u[1]) < -0.9998:
-                continue  # straight on
-            if not face.isInside(v.Point + (u[0] + u[1]).normalize() * 1e-3, 1e-9, True):
-                yield v.Point, u
+        for c, u, convex in corners(face):
+            if not convex:
+                yield c, u
 
 
-def _corner_caps(faces, distance: float) -> list:
-    """At each inner corner of faces, the kite between the arc an inward offset by distance draws
-    around it and the point where the offset edges meet."""
-    caps = []
+def corner_kites(faces, distance: float) -> list:
+    """(corner, side point, apex, side point) at each inner corner of faces: the kite between the arc an
+    inward offset by distance draws around it and the apex where the offset edges meet."""
+    kites = []
     for c, u in inner_corners(faces):
         cos, m = u[0].dot(u[1]), (u[0] + u[1]).normalize()  # m: bisector
         n0, n1 = ((b - a * cos).normalize() for a, b in (u, u[::-1]))
-        apex = c - m * (distance / math.sqrt((1 - cos) / 2))
-        caps.append(Part.Face(Part.makePolygon([c, c - n0 * distance, apex, c - n1 * distance, c])))
-    return caps
+        kites.append((c, c - n0 * distance, c - m * (distance / math.sqrt((1 - cos) / 2)), c - n1 * distance))
+    return kites
+
+
+def _corner_caps(faces, distance: float) -> list:
+    return [Part.Face(Part.makePolygon([*k, k[0]])) for k in corner_kites(faces, distance)]
 
 
 def offset_faces(faces, distance: float, sharp: bool = False) -> list:

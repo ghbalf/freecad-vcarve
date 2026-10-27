@@ -12,7 +12,8 @@ import Path
 from vcarve_flat import clearing, medial
 from vcarve_flat.clearing import area_subtract, offset_faces, pocket_polylines, rest_faces, subtract
 from vcarve_flat.geom import VBit, depth_for_radius, distances_to_segments
-from vcarve_flat.medial import boundary_segments, carve_polylines, flat_boundary_loops, ridge_polylines
+from vcarve_flat.medial import (boundary_segments, cap_grooves, carve_polylines, flat_boundary_loops,
+                                ridge_polylines)
 from vcarve_flat.sketches import faces_from_loops
 
 V = App.Vector
@@ -113,6 +114,19 @@ class MedialTests(unittest.TestCase):
                  and len(p) > 3]
         boxes = [(p[:, 0].min(), p[:, 1].min(), p[:, 0].max(), p[:, 1].max()) for p in loops]
         self.assertTrue(any(np.allclose(b, (2, 2, 38, 18), atol=0.01) for b in boxes), boxes)
+
+    def test_cap_grooves(self):
+        """The A's counter tip mitred through the top edge's floor offset: one groove each side, from the floor's
+        corner up to the mitre's centre line, where both end at the same point and depth."""
+        wires = [Part.makePolygon([V(x / 2, y / 2, 0) for x, y in pts + pts[:1]]) for pts in (A_OUTER, A_HOLE)]
+        faces = faces_from_loops("A", wires)
+        vbit = VBit(10, 60, 0.1)
+        floor = offset_faces(faces, -(0.05 + 3 * math.tan(vbit.half_angle)), sharp=True)
+        a, b = sorted(cap_grooves(faces, floor, vbit, 0.0, 3.0), key=lambda g: g[0, 0])
+        np.testing.assert_allclose([a[0, 2], b[0, 2]], -3.0)
+        np.testing.assert_allclose(a[1], b[1], atol=1e-3)
+        np.testing.assert_allclose(a[1], (30.325, 38.973, -2.405), atol=1e-3)
+        self.assertEqual(cap_grooves([L_FACE], offset_faces([L_FACE], -2.0, sharp=True), VBit(10, 90, 0), 0.0, 2.0), [])
 
     def test_clamp_kink_not_cut_off(self):
         # Samples StepLength apart skipped the point where the depth reaches the clamp; the chord

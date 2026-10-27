@@ -15,7 +15,7 @@ import PathScripts.PathUtils as PathUtils
 from . import op_vcarve
 from .clearing import area_offset, inside_loops, intersect, mirror_faces, subtract, union
 from .geom import flat_radius, pass_depths, plug_errors
-from .medial import corner_valleys, face_loops, has_narrow_gap, ridge_polylines
+from .medial import cap_grooves, corner_valleys, face_loops, has_narrow_gap, ridge_polylines
 from .sketches import SketchError
 
 _GROUP = "V-Carve Plug"
@@ -122,8 +122,9 @@ class ObjectVCarvePlug(op_vcarve.ObjectVCarveFlat):
         return intersect(area_offset(faces, -cs.r_flat, sharp=True), self._limit(obj, faces))
 
     def wall_loops(self, obj, cs, face) -> list:
-        loops = face_loops(area_offset([face], -cs.r_flat, sharp=True), cs.z_top - cs.depth,
-                           deflection=obj.Discretize, tol=obj.Tolerance.Value)
+        floor = area_offset([face], -cs.r_flat, sharp=True)
+        loops = (face_loops(floor, cs.z_top - cs.depth, deflection=obj.Discretize, tol=obj.Tolerance.Value)
+                 + cap_grooves([face], floor, cs.vbit, cs.z_top, cs.depth))
         return inside_loops(loops, self._limit(obj, [face]))
 
     def extra_paths(self, obj) -> list:

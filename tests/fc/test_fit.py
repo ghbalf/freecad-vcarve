@@ -14,6 +14,7 @@ import Path.Tool.Controller
 
 from fit import make_inlay, seated
 from helpers import _tool, add_clearance, make_job, make_sketch
+from test_medial import A_HOLE, A_OUTER
 from test_op_vcarve import L_SHAPE, RECT, RING
 from vcarve_flat import fit as fitcheck
 from vcarve_flat import fit_object, progress
@@ -161,6 +162,16 @@ class FitTests(unittest.TestCase):
         gap = seated(n, pts, (42.5, 10)).gap  # the design bbox x 0..85
         self.assertGreater(gap.min(), -TOL, pts[gap.argmin()])
 
+
+    def test_fit_cap_groove(self):
+        """The counter's mitred tip reaches through the floor's offset of the top edge; the cone leaves the two
+        grooves between them unless a pass runs up each one (the plug collided there by up to 0.1 mm)."""
+        n = make_inlay(self.doc, [[(x / 2, y / 2) for x, y in loop] for loop in (A_OUTER, A_HOLE)], tip=0.1)
+        self.assertFalse(self.err.called, self.err.call_args_list)
+        x, y = np.meshgrid(np.arange(28.3, 32.3, 0.05), np.arange(35, 40.5, 0.05))  # above the tip (34.56)
+        pts = np.column_stack([x.ravel(), y.ravel()])
+        gap = seated(n, pts, (30.31, 27.91)).gap  # the design bbox x 17.21..43.41, y 15.41..40.41
+        self.assertGreater(gap.min(), -TOL, pts[gap.argmin()])
 
 class CheckTests(unittest.TestCase):
     def setUp(self):
