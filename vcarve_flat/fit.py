@@ -123,6 +123,15 @@ def cut_height(paths_by_tool, points, chunk=256) -> np.ndarray:
     return out
 
 
+def chain(plug) -> list:
+    """The ops a check of plug simulates: the pocket op and its Job's active clearance ops, then the plug
+    op and its Job's; [] without a pocket op."""
+    pocket = plug.PocketOp
+    if pocket is None:
+        return []
+    return [pocket, *op_vcarve.clearance_ops(pocket), plug, *op_vcarve.clearance_ops(plug)]
+
+
 def signature(ops) -> str:
     h = hashlib.sha1()
     for op in ops:
@@ -156,11 +165,10 @@ def check(plug, grid=0.25, tol=0.02) -> FitResult:
         return FitResult(np.zeros((0, 2)), grid, np.zeros(0), np.zeros(0), np.zeros(0, bool), np.zeros(0, bool),
                          0.0, 0.0, ops, error)
 
-    pocket, ops = plug.PocketOp, [plug]
+    pocket, ops = plug.PocketOp, chain(plug) or [plug]
     if pocket is None:
         return refuse(f"{plug.Label}: no pocket op linked")
-    n = 1 + len(pocket_clearance := op_vcarve.clearance_ops(pocket))
-    ops, paths = [pocket, *pocket_clearance, plug, *op_vcarve.clearance_ops(plug)], []
+    n, paths = ops.index(plug), []
     for i, op in enumerate(ops):
         try:
             a, b = g1_segments(op, (pocket if i < n else plug).StartDepth.Value)

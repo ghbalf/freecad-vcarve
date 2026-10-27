@@ -11,11 +11,14 @@ from unittest import mock
 
 import FreeCAD as App
 import FreeCADGui as Gui
+import numpy as np
+import Path
 from PySide import QtCore, QtGui
 
 # The addon link made by tests/test_gui.py; gives the test helpers without relying on __file__.
 sys.path.insert(0, os.path.join(os.environ["FREECAD_USER_HOME"], "Mod", "freecad-vcarve", "tests", "fc"))
-NAMES = ["CAM_VCarveFlat", "CAM_VCarveClearance", "CAM_VCarvePair", "CAM_VCarvePlug", "CAM_VCarveInlay"]
+NAMES = ["CAM_VCarveFlat", "CAM_VCarveClearance", "CAM_VCarvePair", "CAM_VCarvePlug", "CAM_VCarveInlay",
+         "CAM_VCarveFit"]
 
 
 def toolbar_entries(title):
@@ -88,6 +91,43 @@ def check_progress(doc):
     assert slow.Proxy.took is not None and slow.Proxy.took < 2, slow.Proxy.took
     assert not progress.cancelled()
     doc.removeObject(slow.Name)
+
+
+def check_fit(doc, plug):
+    """Check Inlay Fit: one Fit object per inlay, its squares red (collisions) and blue (voids)."""
+    from vcarve_flat import fit, fit_object
+    from vcarve_flat.gui import commands
+
+    def fits():
+        return [o for o in doc.Objects if isinstance(getattr(o, "Proxy", None), fit_object.Fit)]
+    Gui.Selection.clearSelection()
+    with mock.patch.object(Path.Log, "error") as error:
+        Gui.runCommand("CAM_VCarveFit")
+        assert "Select the plug" in str(error.call_args), error.call_args
+        Gui.Selection.addSelection(plug)
+        for _ in range(2):
+            Gui.runCommand("CAM_VCarveFit")
+            QtGui.QApplication.processEvents()
+            assert len(fits()) == 1, [o.Label for o in fits()]
+        assert error.call_count == 1, error.call_args_list
+    obj = fits()[0]
+    assert isinstance(obj.ViewObject.Proxy, commands.FitViewProvider), obj.ViewObject.Proxy
+    assert os.path.isfile(obj.ViewObject.Proxy.getIcon())
+    assert not {"Invalid", "Touched"} & set(obj.State), obj.State
+    Gui.Selection.clearSelection()
+
+    pts = np.array([(x, y) for x in range(4) for y in range(3)], float)  # both colours, however the inlay fits
+    hits = pts[:, 0] < 1
+    result = fit.FitResult(pts, 1.0, np.zeros(len(pts)), np.zeros(len(pts)), hits, ~hits, -0.1, 0.3, fit.chain(plug))
+    made = fit_object.create(doc, plug, result)
+    commands._show_fit(made)
+    colours = [tuple(round(c, 2) for c in m.DiffuseColor[:3]) for m in made.ViewObject.ShapeAppearance]
+    n = len(made.Shape.SubShapes[0].Faces)
+    assert n and len(made.Shape.Faces) > n, [len(s.Faces) for s in made.Shape.SubShapes]
+    assert colours == [(1, 0, 0)] * n + [(0, 0.3, 1)] * (len(made.Shape.Faces) - n), colours
+    opaque = [(m.Transparency, m.DiffuseColor[3]) for m in made.ViewObject.ShapeAppearance]
+    assert made.ViewObject.Transparency == 0 and all(a == 1 for _, a in opaque), (made.ViewObject.Transparency, opaque)
+    doc.removeObject(made.Name)
 
 
 def main():
@@ -301,6 +341,7 @@ def main():
     page = types.SimpleNamespace(job=pjob)
     assert plug in panels.ClearanceOpPage._vcarve_ops(page), "clearance combo omits the plug op"
 
+    check_fit(doc, plug)
     pocket = plug.PocketOp
     plug.Active = False  # its recompute is slow and not under test
     plug.ViewObject.Document.setEdit(plug.ViewObject, 0)

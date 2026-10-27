@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 """Inlay fit: the flipped plug seated in the pocket, simulated from both Jobs' paths on cross-sections."""
 import math
+import os
+import tempfile
 import unittest
 from unittest import mock
 
@@ -9,8 +11,10 @@ import numpy as np
 import Path
 
 from fit import make_inlay, seated
+from helpers import add_clearance
 from test_op_vcarve import L_SHAPE, RECT, RING
 from vcarve_flat import fit as fitcheck
+from vcarve_flat import fit_object, progress
 from vcarve_flat.fit import cut_height
 
 BAR3 = [(0, 24), (30, 24), (30, 27), (0, 27)]
@@ -232,6 +236,153 @@ class CheckTests(unittest.TestCase):
         n.plug.GlueGap = 0.3
         self.doc.recompute()
         self.assertNotEqual(fitcheck.signature(ops), before)
+
+
+def assert_squares(case, shape, points, mask, grid):
+    """shape covers the squares around points[mask] and none of the others' centres."""
+    np.testing.assert_array_equal(fitcheck._inside(points, shape.Faces), mask)
+    case.assertAlmostEqual(shape.Area, mask.sum() * grid ** 2, delta=0.02 * mask.sum() * grid ** 2)
+
+
+class SquaresTests(unittest.TestCase):
+    def test_squares(self):
+        """Squares that touch only at a corner (Path.Area drops or inverts whole regions of them)."""
+        x, y = np.meshgrid(np.arange(30) * 0.25 + 0.1, np.arange(30) * 0.25 - 3)
+        points = np.column_stack([x.ravel(), y.ravel()])
+        for mask in (np.random.default_rng(1).random(len(points)) < 0.5, (np.arange(len(points)) % 31) % 2 == 0):
+            assert_squares(self, fit_object._squares(points[mask], 0.25, 0), points, mask, 0.25)
+
+
+class FitObjectTests(unittest.TestCase):
+    def setUp(self):
+        self.doc = App.newDocument("fitobj")
+        mock.patch.object(Path.Log, "warning").start()
+        self.err = mock.patch.object(Path.Log, "error").start()
+        self.addCleanup(mock.patch.stopall)
+        self.n = make_inlay(self.doc, LOOPS, tip=1, ridge=False)  # collides
+        self.result = fitcheck.check(self.n.plug, grid=1)
+        self.assertIsNone(self.result.error)
+        r = self.result
+        r.voids = ~r.collisions & (np.arange(len(r.gap)) % 5 == 0)  # the inlay has none to show
+        r.worst_void = r.gap[r.voids].max()
+
+    def tearDown(self):
+        App.closeDocument(self.doc.Name)
+
+    def assert_valid(self, obj):
+        obj.touch()
+        self.doc.recompute()
+        self.assertFalse({"Invalid", "Error", "Touched"} & set(obj.State), obj.State)
+
+    def assert_outdated(self, obj, area):
+        self.doc.recompute()
+        self.assertIn("Invalid", obj.State)
+        self.assertIn("outdated: run Check Inlay Fit", obj.getStatusString())
+        self.assertAlmostEqual(obj.Shape.Area, area, 6)
+
+    def test_fit_object(self):
+        n, r = self.n, self.result
+        obj = fit_object.create(self.doc, n.plug, r)
+        self.assertEqual(obj.Label, "S Fit")
+        self.assertEqual((obj.PlugOp, obj.PocketOp, list(obj.ClearanceOps)), (n.plug, n.vc, [n.pocket_clr, n.clr]))
+        self.assertEqual(obj.Signature, fitcheck.signature(r.ops))
+        self.assertEqual((obj.Collisions, obj.Voids), (r.collisions.sum(), r.voids.sum()))
+        self.assertGreater(obj.Collisions, 0)
+        self.assertGreater(obj.Voids, 0)
+        self.assertAlmostEqual(obj.WorstCollision.Value, r.worst_collision, 6)
+        self.assertAlmostEqual(obj.WorstVoid.Value, r.worst_void, 6)
+        hits, voids = obj.Shape.SubShapes
+        for part, mask in ((hits, r.collisions), (voids, r.voids)):
+            assert_squares(self, part, r.points, mask, r.grid)
+            bb = part.BoundBox
+            self.assertAlmostEqual(bb.ZMin, n.vc.StartDepth.Value + 0.01, 6)
+            self.assertAlmostEqual(bb.ZMax, bb.ZMin, 6)
+            self.assertAlmostEqual(bb.XMin, r.points[mask, 0].min() - r.grid / 2, 2)
+            self.assertAlmostEqual(bb.YMax, r.points[mask, 1].max() + r.grid / 2, 2)
+        self.assert_valid(obj)
+        area = obj.Shape.Area
+        n.plug.GlueGap = 0.3
+        self.assert_outdated(obj, area)
+
+    def test_fit_object_chain_changes(self):
+        """A clearance op deactivated or added later makes it outdated, like a changed path."""
+        n = self.n
+        obj = fit_object.create(self.doc, n.plug, self.result)
+        self.assert_valid(obj)
+        area = obj.Shape.Area
+        n.clr.Active = False
+        self.assert_outdated(obj, area)
+        n.clr.Active = True
+        self.assert_valid(obj)
+        add_clearance(self.doc, n.job, n.vc, 1, rest_only=True)
+        obj.touch()
+        self.assert_outdated(obj, area)
+        n.plug.PocketOp = None
+        obj.touch()
+        self.assert_outdated(obj, area)
+
+    def test_fit_object_restore(self):
+        obj = fit_object.create(self.doc, self.n.plug, self.result)
+        self.doc.recompute()
+        name, area, faces, signature = obj.Name, obj.Shape.Area, len(obj.Shape.Faces), obj.Signature
+        path = os.path.join(tempfile.mkdtemp(), "fit.FCStd")
+        self.doc.saveAs(path)
+        App.closeDocument(self.doc.Name)
+        self.doc = App.openDocument(path)
+        obj = self.doc.getObject(name)
+        self.assertIsInstance(obj.Proxy, fit_object.Fit)
+        self.assertEqual((obj.Signature, len(obj.Shape.Faces), len(obj.Shape.SubShapes)), (signature, faces, 2))
+        self.assertAlmostEqual(obj.Shape.Area, area, 6)
+        self.assert_valid(obj)
+
+    def fits(self):
+        return [o for o in self.doc.Objects if isinstance(getattr(o, "Proxy", None), fit_object.Fit)]
+
+    def test_run_replaces(self):
+        n, attached = self.n, []
+        self.doc.UndoMode = 1
+        with mock.patch.object(fitcheck, "check", return_value=self.result), \
+                mock.patch.object(App.Console, "PrintWarning") as warn:
+            for _ in range(2):
+                fit_object.run(n.plug, lambda obj: attached.append(obj.Name))
+        second = self.doc.getObject(attached[1])
+        self.assertEqual((self.fits(), len(attached)), ([second], 2))
+        self.assertFalse({"Invalid", "Touched"} & set(second.State), second.State)
+        r = self.result
+        warn.assert_called_with(f"S Fit: worst collision {r.worst_collision:.2f} mm at {r.collisions.sum()} spots, "
+                                f"worst void {r.worst_void:.2f} mm\n")
+        self.assertEqual(self.doc.UndoNames[:2], ["Check Inlay Fit"] * 2)
+
+    def test_run_keeps_old_on_error_or_cancel(self):
+        n = self.n
+        with mock.patch.object(fitcheck, "check", return_value=self.result), \
+                mock.patch.object(App.Console, "PrintWarning"):
+            old = fit_object.run(n.plug)
+        failed = fitcheck.FitResult(*([None] * 9), error="S: out of date, recompute it first")
+
+        def cancel(plug):
+            raise progress.Cancelled
+
+        for check in (mock.Mock(return_value=failed), cancel):
+            with mock.patch.object(fitcheck, "check", check):
+                self.assertIsNone(fit_object.run(n.plug))
+            self.assertEqual(self.fits(), [old])
+        self.err.assert_called_once_with("S: out of date, recompute it first")
+
+    def test_summary(self):
+        r = self.result
+        r.collisions[:], r.voids[:], r.worst_collision, r.worst_void = False, False, 0.0, 0.0
+        obj = fit_object.create(self.doc, self.n.plug, r)
+        self.assertEqual(fit_object.summary(obj), "S Fit: fits")
+        obj.Voids, obj.WorstVoid = 3, 0.123
+        self.assertEqual(fit_object.summary(obj), "S Fit: worst void 0.12 mm")
+
+    def test_plug_of(self):
+        n = self.n
+        for sel in (n.plug, n.pjob, n.vc, n.job):
+            self.assertEqual(fit_object.plug_of([n.etc, sel]), n.plug)
+        self.assertIsNone(fit_object.plug_of([n.etc]))
+        self.assertIsNone(fit_object.plug_of([]))
 
 
 if __name__ == "__main__":
