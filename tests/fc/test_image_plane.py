@@ -8,28 +8,8 @@ import unittest
 import FreeCAD as App
 import numpy as np
 
+from helpers import make_plane
 from vcarve_flat.image_plane import ImageError, plane_frame, read_rgba
-
-
-def write_png(path, pixels):
-    """pixels: HxWx3 uint8 rows from the top."""
-    from PySide import QtGui
-    h, w = pixels.shape[:2]
-    img = QtGui.QImage(w, h, QtGui.QImage.Format_RGB32)
-    for y in range(h):
-        for x in range(w):
-            img.setPixel(x, y, QtGui.qRgb(*map(int, pixels[y, x])))
-    assert img.save(path)
-
-
-def make_plane(doc, path, w, h, pixels=None, name="Photo"):
-    """An Image::ImagePlane of w x h mm showing pixels (default: one white pixel)."""
-    write_png(path, np.full((1, 1, 3), 255, np.uint8) if pixels is None else pixels)
-    plane = doc.addObject("Image::ImagePlane", name)
-    plane.ImageFile = path
-    plane.XSize, plane.YSize = w, h
-    doc.recompute()
-    return plane
 
 
 class ImagePlaneTest(unittest.TestCase):

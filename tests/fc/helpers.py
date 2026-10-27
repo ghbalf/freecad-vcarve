@@ -3,6 +3,7 @@
 import os
 
 import FreeCAD as App
+import numpy as np
 import Part
 import Path
 import Path.Main.Job
@@ -57,3 +58,21 @@ def add_clearance(doc, job, link, diameter, rest_only=False):
     op.Proxy.opUpdateDepths(op)
     doc.recompute()
     return op
+
+
+def write_png(path, pixels):
+    """Save HxWx3 uint8 pixels (row 0 on top) as a PNG."""
+    from PySide import QtGui
+    h, w = pixels.shape[:2]
+    data = np.ascontiguousarray(pixels, np.uint8).tobytes()
+    assert QtGui.QImage(data, w, h, 3 * w, QtGui.QImage.Format_RGB888).copy().save(path)
+
+
+def make_plane(doc, path, w, h, pixels=None, name="Photo"):
+    """An Image::ImagePlane of w x h mm showing pixels (default: one white pixel), saved to path."""
+    write_png(path, np.full((1, 1, 3), 255, np.uint8) if pixels is None else pixels)
+    plane = doc.addObject("Image::ImagePlane", name)
+    plane.ImageFile = path
+    plane.XSize, plane.YSize = w, h
+    doc.recompute()
+    return plane
