@@ -29,6 +29,7 @@ dropdown, and in the CAM menu after Vcarve:
 - **V-Carve Pair**: creates both, linked, in one step.
 - **V-Carve Inlay**: sets up a pocket and a matching plug, see below.
 - **Check Inlay Fit**: simulates the seated plug and marks where it collides or leaves a gap, see below.
+- **V-Carve Photo**: carves an image plane as grooves whose depth follows its darkness, see below.
 
 Workflow:
 
@@ -159,6 +160,57 @@ Pointed V-bits are best for inlays.
 **Step-down.** The command sets a 1.5 mm step-down. The clearance op follows the levels of its V-carve
 op (pocket or plug). On the pocket op, `FlatDepth` 0 means no flat floor at all: the clearance op cuts nothing, and the V-bit stops adding step-down levels once a level no longer cuts deeper. The plug op always has a flat floor (it hides `FlatDepth`), and it errors if its pocket op has `FlatDepth` 0.
 
+## Photo V-carve
+
+**V-Carve Photo** carves a picture as parallel V-grooves: dark areas get deep, wide grooves, light areas
+shallow ones or none. It suits light, close-grained hardwood such as maple.
+
+1. **Import the photo.** File → Import, choose the image and "Image plane". Set the plane's size
+   (`XSize`, `YSize`) and place it over the stock, flat in XY; it may face up or down. Only the part
+   over the stock is carved; the op warns when the image reaches outside it.
+2. **Prepare it beforehand** in GIMP or similar. Colour images are converted to grey
+   (0.299 R + 0.587 G + 0.114 B), but converting yourself gives control over which colours turn dark.
+   Raise the contrast there, and paint whatever should stay uncut (the background) pure white;
+   transparent pixels count as white.
+3. Create a CAM Job with a V-bit tool controller, run **V-Carve Photo** and pick the image plane in
+   the task panel.
+
+Each groove is cut at depth = darkness × `MaxDepth`, where darkness is 0 for white and 1 for black on a
+linear (not sRGB) light scale, so black always reaches `MaxDepth`. The bit lifts out where the depth is
+under `MinDepth`. A groove is tip + 2·depth·tan(half angle) wide. When that is wider than `LineSpacing`
+at `MaxDepth`, neighbouring grooves merge into a flat dark area and the op warns. The default spacing
+is the groove width at `MaxDepth` plus 5 %, so the darkest grooves just touch.
+
+Patterns (group "V-Carve Photo"):
+
+- **Lines**: parallel lines at `Angle`.
+- **Hatch**: two crossed line sets, at `Angle` and `HatchAngle`. Each set cuts 1 − √(1 − darkness) of
+  the depth: two crossed sets cover 1 − (1 − c)² of the surface, so together they match the darkness,
+  and both reach `MaxDepth` at black.
+- **Custom**: the edges of the `Vectors` objects instead of straight lines, for example paths drawn in
+  Inkscape: save them as SVG, File → Import the SVG into the document, and add the imported objects
+  with "Add selected" in the task panel. Sketches work too. The image plane still sets the depth.
+
+| Property | Default | Meaning |
+|---|---|---|
+| `ImagePlane` | picked in the panel | The image plane to carve |
+| `Pattern` | Lines | Lines, Hatch or Custom |
+| `Vectors` | none | Objects whose edges are carved (Custom) |
+| `Angle` | 45° | Direction of the lines, from the X axis |
+| `HatchAngle` | 135° | Direction of the second line set (Hatch) |
+| `LineSpacing` | groove width at `MaxDepth` × 1.05, rounded up to 0.1 mm | Distance between lines |
+| `MaxDepth` | 2 mm | Depth of black below Start Depth; capped at the V-bit's cone height |
+| `MinDepth` | 0.05 mm | Shallower than this, the bit lifts out |
+| `SampleStep` | 0.25 mm | Distance between depth samples along a line |
+| `Contrast` | 100 % | Contrast around mid-grey; above 100 % strengthens it |
+| `Invert` | off | Swap dark and light |
+| `Tolerance` | 0.01 mm | Simplification tolerance of the toolpath |
+
+**Eyes.** A portrait lives or dies by its eyes. Make the pupil fully black and leave a small pure-white
+catchlight in it, at least a groove width across, so the bit lifts out there. For fine detail use a
+narrower bit (30°) or closer `LineSpacing`, or trace the eye's outlines in Inkscape and carve them in a
+second op with the Custom pattern.
+
 ## Check inlay fit
 
 **Check Inlay Fit** simulates the plug seated in the pocket (flipped, as you would glue it) from the G1
@@ -200,7 +252,7 @@ indicator and no cancel.
 - A self-intersecting single loop (a figure-8) is not detected.
 - A flat-tipped V-bit leaves a tiny collision at sharp, narrow inner corners of the plug (0.023 mm
   at a 38° counter tip with a 0.1 mm tip, see Tip and ridge pass).
-- Input is 2D sketches only.
+- Input is 2D sketches or a FreeCAD image plane.
 - Check Inlay Fit simulates G1 moves only: it refuses ops with arc moves (G2/G3).
 
 ## Tests
