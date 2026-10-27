@@ -4,6 +4,7 @@ Prints GUI-CHECK-OK and exits 0 on success; prints the traceback and exits 1 oth
 import os
 import sys
 import tempfile
+import time
 import types
 import traceback
 from unittest import mock
@@ -35,6 +36,58 @@ def edit(op):
     Gui.Control.closeDialog()
     Gui.ActiveDocument.resetEdit()
     QtGui.QApplication.processEvents()  # let the closed panel go before the next one opens
+
+
+def press_esc():
+    QtGui.QApplication.sendEvent(Gui.getMainWindow(), QtGui.QKeyEvent(QtCore.QEvent.KeyPress, QtCore.Qt.Key_Escape,
+                                                                      QtCore.Qt.NoModifier))
+
+
+def spin(progress):
+    """Steps for up to 5 s; the time until Cancelled."""
+    t0 = time.monotonic()
+    try:
+        with progress.task("GUI check"):
+            while time.monotonic() - t0 < 5:
+                progress.step()
+                time.sleep(0.01)
+    except progress.Cancelled:
+        return time.monotonic() - t0
+    raise AssertionError("Esc did not cancel")
+
+
+def check_progress(doc):
+    """Events flow and Esc cancels, on its own and inside a recompute (where FreeCAD's sequencer ignores ours)."""
+    from vcarve_flat import progress
+    fired, asked = [], []
+
+    def answer():  # FreeCAD's "abort the rest of the recompute?"
+        box = QtGui.QApplication.activeModalWidget()
+        if isinstance(box, QtGui.QMessageBox):
+            asked.append(box.text())
+            box.button(QtGui.QMessageBox.Yes).click()
+    closer = QtCore.QTimer()
+    closer.timeout.connect(answer)
+    closer.start(50)
+    QtCore.QTimer.singleShot(0, lambda: fired.append(1))
+    QtCore.QTimer.singleShot(300, press_esc)
+    assert spin(progress) < 2 and fired and not asked, (fired, asked)
+
+    class Slow:
+        def __init__(self, obj):
+            obj.Proxy, self.took = self, None
+
+        def execute(self, obj):
+            QtCore.QTimer.singleShot(300, press_esc)
+            self.took = spin(progress)
+
+    slow = doc.addObject("App::FeaturePython", "Slow")
+    Slow(slow)
+    doc.recompute()
+    closer.stop()
+    assert slow.Proxy.took is not None and slow.Proxy.took < 2, slow.Proxy.took
+    assert not progress.cancelled()
+    doc.removeObject(slow.Name)
 
 
 def main():
@@ -205,6 +258,20 @@ def main():
     assert not ok.isEnabled() and "smaller" in dialog.error.text(), "an equal rest end mill is accepted"
     dialog.rest.setCurrentIndex(0)
     assert ok.isEnabled() and not dialog.error.text()
+
+    check_progress(doc)
+    names = [o.Name for o in doc.Objects]
+    esc = QtCore.QTimer()
+    esc.timeout.connect(press_esc)
+    with mock.patch.object(inlay_dialog.InlayDialog, "exec_", lambda self: QtGui.QDialog.Accepted):
+        Gui.Selection.addSelection(doc.getObject("Letters"))
+        esc.start(50)
+        Gui.runCommand("CAM_VCarveInlay")
+        esc.stop()
+        QtGui.QApplication.processEvents()
+    assert [o.Name for o in doc.Objects] == names and len(warnings) == 1, \
+        f"cancelled Inlay left {set(o.Name for o in doc.Objects) - set(names)}; {warnings}"
+    Gui.Selection.clearSelection()
 
     ops0, tools0 = list(job0.Operations.Group), list(job0.Tools.Group)
     seen = []

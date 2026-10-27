@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 """create_inlay: sets up a V-carve inlay, a pocket Job and a plug Job, each with its pair."""
+import Path
 import Path.Main.Job
 import Path.Main.Stock as PathStock
 import Path.Tool.Controller
 
-from . import op_clearance, op_plug
+from . import op_clearance, op_plug, progress
 from .compat import tool_shape
 from .geom import surface_gap
 from .op_vcarve import tool_vbit
@@ -104,3 +105,28 @@ def create_inlay(job, sketch, vtc, etc, pocket_depth, glue_gap, boundary="Margin
     pjob.Stock.ExtZneg = max(job.Stock.Shape.BoundBox.ZLength, pjob.Stock.Shape.BoundBox.ZMax - floor + 1)
     doc.recompute()
     return qjob, pocket, pjob, plug_pair
+
+
+def run_inlay(job, sketch, values, attach=None):
+    """create_inlay(job, sketch, **values) and then attach(its result) as one undo step, with a progress
+    indicator. On Cancel the whole creation is undone and None returned; on an error it is undone and the
+    error raised."""
+    doc = job.Document
+    doc.openTransaction("Create V-Carve Inlay")
+    try:
+        with progress.task("V-Carve Inlay"):
+            made = create_inlay(job, sketch, **values)
+            if progress.cancelled():  # an op's Cancel, swallowed by doc.recompute()
+                raise progress.Cancelled
+        if attach:
+            attach(made)
+    except progress.Cancelled:
+        doc.abortTransaction()
+        doc.recompute()
+        Path.Log.notice("V-Carve Inlay cancelled")
+        return None
+    except Exception:
+        doc.abortTransaction()
+        raise
+    doc.commitTransaction()
+    return made

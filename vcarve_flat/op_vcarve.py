@@ -9,6 +9,7 @@ import Path.Base.SetupSheet as PathSetupSheet
 import Path.Op.Base as PathOp
 import PathScripts.PathUtils as PathUtils
 
+from . import progress
 from .clearing import offset_faces, pocket_polylines, rest_faces
 from .compat import tool_shape
 from .geom import (VBit, distances_to_segments, flat_radius, limit_depth, order_paths, pass_depths,
@@ -127,17 +128,20 @@ def _carve(obj, cs, label, faces, tools):
     deflection, tol = obj.Discretize, obj.Tolerance.Value
     medial, loops, wide = [], [], False
     for face in faces:
+        progress.step()
         paths = carve_polylines(face, cs.vbit, cs.z_top, cs.depth, deflection=deflection,
                                 colinear_deg=obj.Colinear, step=obj.StepLength.Value, tol=tol,
                                 drop_floor=cs.flat, min_depth=cs.min_depth)
         medial += paths
         if cs.flat:
+            progress.step()
             loops += obj.Proxy.wall_loops(obj, cs, face)
         elif paths:
             dist = distances_to_segments(np.vstack(paths)[:, :2], boundary_segments(face, deflection))
             wide = wide or dist.max() > cs.vbit.radius
     rest = []
     if cs.flat:
+        progress.step()
         try:
             rest = _rest_pocket(obj, cs, faces, tools)
         except Exception as exc:
@@ -150,6 +154,7 @@ def _carve_levels(obj, levels, label, faces, tools) -> list:
     (the deeper ones would repeat it)."""
     out = []
     for cs in levels:
+        progress.step()
         out.append(_carve(obj, cs, label, faces, tools))
         if not cs.flat and not any(p[:, 2].min() <= cs.z_top - cs.depth + 1e-6 for p in out[-1][1]):
             break
@@ -251,6 +256,10 @@ class ObjectVCarveFlat(PathOp.ObjectOp):
         return tool_shape(tool) == "VBit"
 
     def opExecute(self, obj):
+        with progress.op_task(self, obj):
+            self.carve(obj)
+
+    def carve(self, obj):
         if not _is_vbit_tc(obj):
             Path.Log.error(f"{obj.Label}: the tool controller must use a V-bit")
             return
@@ -277,8 +286,11 @@ class ObjectVCarveFlat(PathOp.ObjectOp):
             if isinstance(faces, SketchError):
                 Path.Log.error(str(faces))
                 continue
+            progress.step()
             try:
                 carved = _carve_levels(obj, levels, label, faces, tools)
+            except progress.Cancelled:
+                raise
             except Exception as exc:
                 Path.Log.error(f"{label}: carving failed ({exc})")
                 continue

@@ -11,7 +11,8 @@ import Path.Tool.Controller
 from helpers import _tool, make_job, make_sketch
 from test_op_vcarve import RECT
 from vcarve_flat.compat import tool_shape
-from vcarve_flat.inlay import create_inlay
+from test_progress import indicator
+from vcarve_flat.inlay import create_inlay, run_inlay
 from vcarve_flat.op_vcarve import tool_vbit
 
 
@@ -131,6 +132,21 @@ class InlayTests(unittest.TestCase):
         qjob, _, pjob, _ = self.build(other)
         self.assertEqual((qjob.Label, pjob.Label), ("Other Pocket", "Other Plug"))
         self.assertEqual(qjob.Model.Group[0].Objects[0], other)
+
+    def test_inlay_cancel_leaves_nothing(self):
+        self.doc.UndoMode = 1
+        values = dict(vtc=self.vtc, etc=self.etc, pocket_depth=3.0, glue_gap=0.2)
+        names = [o.Name for o in self.doc.Objects]
+        notice = mock.patch.object(Path.Log, "notice").start()
+        patch, _ = indicator(abort_at=3)
+        self.assertIsNone(run_inlay(self.job, self.sk, values))
+        patch.stop()
+        self.assertEqual([o.Name for o in self.doc.Objects], names)
+        self.assertEqual(notice.call_args_list[-1], mock.call("V-Carve Inlay cancelled"))
+        qjob, pocket, pjob, plug = run_inlay(self.job, self.sk, values)  # without Cancel: kept, one undo step
+        self.assertEqual(len([o for o in self.doc.Objects if hasattr(o, "Operations")]), 3)
+        self.assertEqual([o.Name for o in (*pocket, *plug) if "Invalid" in o.State], [])
+        self.assertEqual(self.doc.UndoNames[:1], ["Create V-Carve Inlay"])
 
     def test_not_a_sketch(self):
         box = self.doc.addObject("Part::Box", "Box")

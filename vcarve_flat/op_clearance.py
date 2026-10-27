@@ -5,7 +5,7 @@ import Path
 import Path.Base.SetupSheet as PathSetupSheet
 import Path.Op.Base as PathOp
 
-from . import observer, op_vcarve
+from . import observer, op_vcarve, progress
 from .clearing import pocket_polylines, rest_region
 from .compat import tool_shape
 from .geom import order_paths
@@ -101,6 +101,10 @@ class ObjectVCarveClearance(PathOp.ObjectOp):
         return tool_shape(tool) == "Endmill"
 
     def opExecute(self, obj):
+        with progress.op_task(self, obj):
+            self._clear(obj)
+
+    def _clear(self, obj):
         link = obj.VCarveOp
         if link is None:
             Path.Log.info(f"{obj.Label}: no V-Carve operation linked yet")
@@ -149,12 +153,16 @@ class ObjectVCarveClearance(PathOp.ObjectOp):
         for label, faces in link.Proxy.regions(link):
             if isinstance(faces, SketchError):
                 continue  # the V-carve op logs it
+            cut = []
             try:
-                cut = [pocket_polylines(rest_region(link.Proxy.floor(link, cs, faces), tools, radius,
-                                                    obj.Allowance.Value),
-                                        radius, stepover, obj.PocketPattern, obj.Allowance.Value,
-                                        cs.z_top - cs.depth, link.Discretize)
-                       for cs in levels]
+                for cs in levels:
+                    progress.step()
+                    cut.append(pocket_polylines(rest_region(link.Proxy.floor(link, cs, faces), tools, radius,
+                                                            obj.Allowance.Value),
+                                                radius, stepover, obj.PocketPattern, obj.Allowance.Value,
+                                                cs.z_top - cs.depth, link.Discretize))
+            except progress.Cancelled:
+                raise
             except Exception as exc:
                 Path.Log.error(f"{label}: end mill floor clearing failed ({exc})")
                 continue

@@ -197,7 +197,7 @@ class ObjectVCarvePlug(op_vcarve.ObjectVCarveFlat):
     def opRejectAddBase(self, obj, base, sub):
         return True
 
-    def opExecute(self, obj):
+    def carve(self, obj):
         errors, vbit, start = self._checks(obj)
         for error in errors:
             Path.Log.error(error)
@@ -222,7 +222,7 @@ class ObjectVCarvePlug(op_vcarve.ObjectVCarveFlat):
                 Path.Log.warning(f"{obj.Label}: the stock margin beyond the plug is narrower than the end mill "
                                  f"diameter {2 * rc.x:g} mm, so the clearance op may not clear it fully and the "
                                  "V-bit clears the rest. Set the plug Job's stock to the real board size")
-        super().opExecute(obj)
+        super().carve(obj)
         complement = self._last[0] if self._last else []
         if vbit.tip_radius > 0 and any(
                 has_narrow_gap(f, vbit.tip_radius, deflection=obj.Discretize, colinear_deg=obj.Colinear,

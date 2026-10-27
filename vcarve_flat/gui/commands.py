@@ -167,10 +167,8 @@ class _InlayCommand:
         dialog = inlay_dialog.InlayDialog(job, vtcs, etcs)
         if not dialog.exec_():
             return
-        doc = App.ActiveDocument
-        doc.openTransaction("Create V-Carve Inlay")
-        try:
-            pocket_job, pocket, plug_job, plug = inlay.create_inlay(job, selected[0], **dialog.values())
+        def attach(made):  # inside the creation's transaction
+            pocket_job, pocket, plug_job, plug = made
             for new_job in (pocket_job, plug_job):  # as JobGui.Create
                 new_job.ViewObject.Proxy = JobGui.ViewProvider(new_job.ViewObject)
                 new_job.ViewObject.addExtension("Gui::ViewProviderGroupExtensionPython")
@@ -179,16 +177,13 @@ class _InlayCommand:
             for (clearance, carve), carve_res in ((pocket, vcarve_res), (plug, plug_res)):
                 _attach(clearance, clearance_res, False)
                 _attach(carve, carve_res, False)
+
+        try:
+            if inlay.run_inlay(job, selected[0], dialog.values(), attach):
+                job.Document.recompute()
         except ValueError as e:
-            doc.abortTransaction()
-            doc.recompute()
+            job.Document.recompute()
             _warn(str(e))
-            return
-        except Exception:
-            doc.abortTransaction()
-            raise
-        doc.commitTransaction()
-        doc.recompute()
 
 
 _COMMANDS = {}
