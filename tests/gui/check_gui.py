@@ -116,6 +116,17 @@ def check_progress(doc):
     assert slept > 1, slept  # of the 2 s; 0.12 s when every step beat the indicator
 
 
+def check_tree(doc, jobs):
+    """Each Job shows its Operations, Model, Tools, Stock and SetupSheet nested below it, not beside it."""
+    QtGui.QApplication.processEvents()
+    tree = next(t for t in Gui.getMainWindow().findChildren(QtGui.QTreeWidget) if t.topLevelItemCount())
+    root = next(tree.topLevelItem(i) for i in range(tree.topLevelItemCount())
+                if tree.topLevelItem(i).text(0) == doc.Label)
+    top = [root.child(i).text(0) for i in range(root.childCount())]
+    loose = [o.Label for j in jobs for o in j.OutList if o.Label in top]
+    assert not loose, f"Job children at the document's top level: {loose}"
+
+
 def check_fit(doc, plug):
     """Check Inlay Fit: one Fit object per inlay, its squares red (collisions) and blue (voids)."""
     from vcarve_flat import fit, fit_object
@@ -243,7 +254,7 @@ def main():
         clr.ViewObject.Document.setEdit(clr.ViewObject, 0)
         panel = clr.ViewObject.Proxy.panel
         box = next(p.form.RestOnly for p in panel.featurePages if hasattr(p.form, "RestOnly"))
-        assert box.isChecked() == rest, f"RestOnly {rest} shown as {box.isChecked()}"
+        assert box.isChecked() == rest, f"RestOnly {rest} shown as {box.isChecked()}; obj {clr.RestOnly}"
         box.setChecked(not rest)
         for page in panel.featurePages:
             page.setDirty()
@@ -355,6 +366,7 @@ def main():
     assert len(jobs) == 3, [j.Label for j in jobs]
     assert (list(job0.Operations.Group), list(job0.Tools.Group)) == (ops0, tools0), "Inlay changed the selected Job"
     qjob, pjob = (next(j for j in jobs if j.Label == f"Letters {s}") for s in ("Pocket", "Plug"))
+    check_tree(doc, jobs)
     for j in jobs:
         for op in j.Operations.Group:
             want = "Endmill" if hasattr(op, "VCarveOp") else "VBit"

@@ -8,7 +8,6 @@ import os
 import FreeCAD as App
 import FreeCADGui as Gui
 import Path
-import Path.Main.Gui.Job as JobGui
 import Path.Op.Base as PathOp
 import Path.Op.Gui.Base as PathOpGui
 import PathScripts.PathUtils as PathUtils
@@ -170,11 +169,7 @@ class _InlayCommand:
         if not dialog.exec_():
             return
         def attach(made):  # inside the creation's transaction
-            pocket_job, pocket, plug_job, plug = made
-            for new_job in (pocket_job, plug_job):  # as JobGui.Create
-                new_job.ViewObject.Proxy = JobGui.ViewProvider(new_job.ViewObject)
-                new_job.ViewObject.addExtension("Gui::ViewProviderGroupExtensionPython")
-                new_job.ViewObject.Proxy.deleteOnReject = False
+            _, pocket, _, plug = made
             vcarve_res, clearance_res, plug_res = self.res
             for (clearance, carve), carve_res in ((pocket, vcarve_res), (plug, plug_res)):
                 _attach(clearance, clearance_res, False)

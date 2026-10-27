@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 """create_inlay: sets up a V-carve inlay, a pocket Job and a plug Job, each with its pair."""
+import FreeCAD as App
 import Path
 import Path.Main.Job
 import Path.Main.Stock as PathStock
@@ -31,11 +32,15 @@ def _stepdown(op, value):
     op.StepDown = value
 
 
-def _new_job(src, sketch, label, tcs):
+def _new_job(src, sketch, tcs):
     """A Job for sketch with copies of tcs; returns it and the copies."""
     doc = src.Document
     job = Path.Main.Job.Create("Job", [sketch], None)  # the CAM simulators list only names Job*
-    job.Label = label
+    if App.GuiUp:  # as JobGui.Create, before any recompute: the tree places the Job's children only once
+        import Path.Main.Gui.Job as JobGui
+        job.ViewObject.Proxy = JobGui.ViewProvider(job.ViewObject)
+        job.ViewObject.addExtension("Gui::ViewProviderGroupExtensionPython")
+        job.ViewObject.Proxy.deleteOnReject = False
     for tc in list(job.Tools.Group):  # the default one; onDelete removes its tool bit, as the GUI does
         tc.Proxy.onDelete(tc)
         doc.removeObject(tc.Name)
@@ -76,12 +81,12 @@ def create_inlay(job, sketch, vtc, etc, pocket_depth, glue_gap, boundary="Margin
     rests = [rest_etc] if rest_etc else []
     vbit = tool_vbit(vtc)
 
-    qjob, qtcs = _new_job(job, original, f"{original.Label} Pocket", (vtc, etc, *rests))
+    qjob, qtcs = _new_job(job, original, (vtc, etc, *rests))
     whole_base = PathStock.StockType.FromStock(job.Stock) == PathStock.StockType.FromBase
     stock = qjob.Stock  # a model-based stock follows the model; the placement only matters for the others
     qjob.Stock = PathStock.CreateFromTemplate(qjob, PathStock.TemplateAttributes(job.Stock, includePlacement=not whole_base))
     doc.removeObject(stock.Name)
-    pjob, ptcs = _new_job(job, original, f"{original.Label} Plug", (vtc, etc, *rests))
+    pjob, ptcs = _new_job(job, original, (vtc, etc, *rests))
     pjob.Stock.ExtZpos = 0
     doc.recompute()  # the ops take their stock heights when created
 
@@ -104,6 +109,8 @@ def create_inlay(job, sketch, vtc, etc, pocket_depth, glue_gap, boundary="Margin
     floor = min(op.FinalDepth.Value for op in plug_pair)
     pjob.Stock.ExtZneg = max(job.Stock.Shape.BoundBox.ZLength, pjob.Stock.Shape.BoundBox.ZMax - floor + 1)
     doc.recompute()
+    # named last: FreeCAD 1.1 keeps the label of a Job with a view provider taken after a cancel undoes it
+    qjob.Label, pjob.Label = f"{original.Label} Pocket", f"{original.Label} Plug"
     return qjob, pocket, pjob, plug_pair
 
 
