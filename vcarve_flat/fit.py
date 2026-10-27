@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import Part
+import Path
 
 from . import op_vcarve, progress
 from .clearing import offset_faces
@@ -168,17 +169,22 @@ def check(plug, grid=0.25, tol=0.02) -> FitResult:
     pocket, ops = plug.PocketOp, chain(plug) or [plug]
     if pocket is None:
         return refuse(f"{plug.Label}: no pocket op linked")
-    n, paths = ops.index(plug), []
+    n, paths = ops.index(plug), ([], [])
     for i, op in enumerate(ops):
+        if op in (pocket, plug) and not op.Active:
+            return refuse(f"{op.Label}: inactive")
         try:
             a, b = g1_segments(op, (pocket if i < n else plug).StartDepth.Value)
         except ValueError as err:
             return refuse(str(err))
-        if "Invalid" in op.State or "Error" in op.State or not len(a):
+        if "Invalid" in op.State or "Error" in op.State or not len(a) and op in (pocket, plug):
             return refuse(f"{op.Label}: no toolpath, recompute it first")
         if "Touched" in op.State:
             return refuse(f"{op.Label}: out of date, recompute it first")
-        paths.append(((a, b), tool_profile(op.ToolController)))
+        if not len(a):  # a clearance op may have nothing to cut, e.g. a rest end mill that fits nowhere
+            Path.Log.notice(f"{op.Label}: no toolpath, not simulated")
+            continue
+        paths[i >= n].append(((a, b), tool_profile(op.ToolController)))
     design = plug.Proxy._design(plug)
     bounds = plug.Proxy._bounds(plug, design, op_vcarve.tool_vbit(plug.ToolController)) if design else []
     if not bounds:
@@ -191,8 +197,8 @@ def check(plug, grid=0.25, tol=0.02) -> FitResult:
     q = m.copy()
     axis = 0 if plug.MirrorAxis == "X" else 1
     q[:, axis] = 2 * centre[axis] - m[:, axis]
-    z = cut_height(paths[:n], q)
-    s = -cut_height(paths[n:], m)
+    z = cut_height(paths[0], q)
+    s = -cut_height(paths[1], m)
     G = plug.GlueGap.Value
     gap = (-pocket.FlatDepth.Value + G + s) - z
     collisions = gap < -tol

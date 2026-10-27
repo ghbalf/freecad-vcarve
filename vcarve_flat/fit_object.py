@@ -128,7 +128,7 @@ def create(doc, plug, result, shape=None):
 def summary(obj) -> str:
     parts = []
     if obj.Collisions:
-        parts.append(f"worst collision {obj.WorstCollision.Value:.2f} mm at {obj.Collisions} spots")
+        parts.append(f"worst collision {obj.WorstCollision.Value:.2f} mm at {obj.Collisions} points")
     if obj.Voids:
         parts.append(f"worst void {obj.WorstVoid.Value:.2f} mm")
     return f"{obj.Label}: {', '.join(parts) or 'fits'}"

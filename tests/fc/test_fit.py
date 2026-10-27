@@ -10,13 +10,15 @@ from unittest import mock
 import FreeCAD as App
 import numpy as np
 import Path
+import Path.Tool.Controller
 
 from fit import make_inlay, seated
-from helpers import add_clearance
+from helpers import _tool, add_clearance, make_job, make_sketch
 from test_op_vcarve import L_SHAPE, RECT, RING
 from vcarve_flat import fit as fitcheck
 from vcarve_flat import fit_object, progress
 from vcarve_flat.fit import cut_height
+from vcarve_flat.inlay import create_inlay
 
 BAR3 = [(0, 24), (30, 24), (30, 27), (0, 27)]
 LETTERS = [[(34, 24), (44, 24), (44, 34), (34, 34)], [(44.3, 24), (54.3, 24), (54.3, 34), (44.3, 34)]]
@@ -221,13 +223,50 @@ class CheckTests(unittest.TestCase):
         n.plug.PocketOp = None
         self.assertEqual(fitcheck.check(n.plug).error, f"{n.plug.Label}: no pocket op linked")
 
+    def test_check_refuses_inactive(self):
+        n = make_inlay(self.doc, LOOPS, tip=0)
+        for op in (n.plug, n.vc):
+            op.Active = False
+            self.doc.recompute()
+            r = fitcheck.check(n.plug)
+            self.assertEqual(r.error, f"{op.Label}: inactive")
+            self.assertEqual(len(r.points), 0)
+            op.Active = True
+            self.doc.recompute()
+
     def test_check_refuses_empty_paths(self):
         n = make_inlay(self.doc, LOOPS, tip=0)
-        n.plug.Active = False
-        self.doc.recompute()
-        r = fitcheck.check(n.plug)
-        self.assertEqual(r.error, f"{n.plug.Label}: no toolpath, recompute it first")
-        self.assertEqual(len(r.points), 0)
+        for op in (n.plug, n.vc):
+            path = op.Path
+            op.Path = Path.Path([c for c in path.Commands if c.Name not in ("G1", "G01")])
+            op.purgeTouched()
+            self.assertEqual(fitcheck.check(n.plug).error, f"{op.Label}: no toolpath, recompute it first")
+            op.Path = path
+            op.purgeTouched()
+
+    def test_check_skips_empty_clearance(self):
+        """A rest end mill that fits nowhere in a circle leaves its ops nothing to cut: not an error."""
+        doc = self.doc
+        sk = make_sketch(doc, "Letters", [], circles=[(20, 20, 8)])
+        job, tcs = make_job(doc, [sk])
+        tc = Path.Tool.Controller.Create("Rest", tool=_tool(doc, "5mm_Endmill"))
+        tc.Tool.Diameter, tc.ToolNumber = 1.0, 7
+        q, pocket, p, plug = create_inlay(job, sk, tcs["60degree_Vbit"], tcs["5mm_Endmill"], pocket_depth=3.0,
+                                          glue_gap=0.2, rest_etc=tc)
+        doc.recompute()
+        rest = [o for j in (q, p) for o in j.Operations.Group if getattr(o, "RestOnly", False)]
+        self.assertEqual(len(rest), 2)
+        self.assertFalse([c for o in rest for c in o.Path.Commands if c.Name in ("G1", "G01")])
+        with mock.patch.object(Path.Log, "notice") as notice:
+            r = fitcheck.check(plug[1], grid=1)
+        self.assertIsNone(r.error)
+        self.assertTrue(len(r.points))
+        self.assertTrue(set(rest) <= set(r.ops))
+        for o in rest:
+            self.assertIn(mock.call(f"{o.Label}: no toolpath, not simulated"), notice.call_args_list)
+        fobj = fit_object.create(doc, plug[1], r)
+        doc.recompute()
+        self.assertFalse({"Invalid", "Touched"} & set(fobj.State), fobj.State)
 
     def test_signature_changes(self):
         n = make_inlay(self.doc, LOOPS, tip=0)
@@ -387,7 +426,7 @@ class FitObjectTests(unittest.TestCase):
         self.assertEqual((self.fits(), len(attached)), ([second], 2))
         self.assertFalse({"Invalid", "Touched"} & set(second.State), second.State)
         r = self.result
-        warn.assert_called_with(f"S Fit: worst collision {r.worst_collision:.2f} mm at {r.collisions.sum()} spots, "
+        warn.assert_called_with(f"S Fit: worst collision {r.worst_collision:.2f} mm at {r.collisions.sum()} points, "
                                 f"worst void {r.worst_void:.2f} mm\n")
         self.assertEqual(self.doc.UndoNames[:2], ["Check Inlay Fit"] * 2)
 
