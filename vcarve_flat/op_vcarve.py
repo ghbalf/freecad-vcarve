@@ -9,6 +9,7 @@ import Path.Base.SetupSheet as PathSetupSheet
 import Path.Op.Base as PathOp
 import PathScripts.PathUtils as PathUtils
 
+from . import progress
 from .clearing import offset_faces, pocket_polylines, rest_faces
 from .compat import tool_shape
 from .geom import (VBit, distances_to_segments, flat_radius, limit_depth, order_paths, pass_depths,
@@ -103,45 +104,58 @@ def rest_clearance(cop) -> App.Vector:
     return App.Vector(cop.ToolController.Tool.Diameter.Value / 2, cop.Allowance.Value, 0)
 
 
-def _rest_pocket(obj, cs, faces, rc):
-    floor = obj.Proxy.floor(obj, cs, faces)
-    if rc.x > 0:
-        floor = rest_faces(floor, rc.x, rc.y)
+def chain_tools(cops) -> list:
+    """(end mill radius, allowance) of each clearance op in cops that has a tool controller, in order."""
+    return [(c.ToolController.Tool.Diameter.Value / 2, c.Allowance.Value) for c in cops
+            if is_tool_controller(c.ToolController)]
+
+
+def chain_key(cops) -> str:
+    """chain_tools(cops) as a string, stored to notice a change of the chain."""
+    return ";".join(f"{r:g},{a:g}" for r, a in chain_tools(cops))
+
+
+def _rest_pocket(obj, cs, faces, tools):
+    floor = rest_faces(obj.Proxy.floor(obj, cs, faces), tools)
     return pocket_polylines(floor, max(cs.vbit.tip_radius, MIN_REST_TOOL_RADIUS),
                             rest_stepover(cs.vbit, obj.RestScallop.Value), "Offset", 0,
                             cs.z_top - cs.depth, obj.Discretize)
 
 
-def _carve(obj, cs, label, faces, rc):
+def _carve(obj, cs, label, faces, tools):
     """(rest pocket, medial, boundary loops, wider-than-bit) polylines for one sketch's faces.
     A rest-pocket failure is logged and does not drop the medial and boundary paths."""
     deflection, tol = obj.Discretize, obj.Tolerance.Value
     medial, loops, wide = [], [], False
     for face in faces:
+        progress.step()
         paths = carve_polylines(face, cs.vbit, cs.z_top, cs.depth, deflection=deflection,
                                 colinear_deg=obj.Colinear, step=obj.StepLength.Value, tol=tol,
                                 drop_floor=cs.flat, min_depth=cs.min_depth)
         medial += paths
         if cs.flat:
+            progress.step()
             loops += obj.Proxy.wall_loops(obj, cs, face)
         elif paths:
             dist = distances_to_segments(np.vstack(paths)[:, :2], boundary_segments(face, deflection))
             wide = wide or dist.max() > cs.vbit.radius
     rest = []
     if cs.flat:
+        progress.step()
         try:
-            rest = _rest_pocket(obj, cs, faces, rc)
+            rest = _rest_pocket(obj, cs, faces, tools)
         except Exception as exc:
             Path.Log.error(f"{label}: V-bit floor clearing failed ({exc})")
     return rest, medial, loops, wide
 
 
-def _carve_levels(obj, levels, label, faces, rc) -> list:
+def _carve_levels(obj, levels, label, faces, tools) -> list:
     """_carve at each level; without a flat floor, stops after the first level that clamps nothing
     (the deeper ones would repeat it)."""
     out = []
     for cs in levels:
-        out.append(_carve(obj, cs, label, faces, rc))
+        progress.step()
+        out.append(_carve(obj, cs, label, faces, tools))
         if not cs.flat and not any(p[:, 2].min() <= cs.z_top - cs.depth + 1e-6 for p in out[-1][1]):
             break
     return out
@@ -208,11 +222,14 @@ class ObjectVCarveFlat(PathOp.ObjectOp):
         self.opOnDocumentRestored(obj)
 
     def opOnDocumentRestored(self, obj):
-        if not hasattr(obj, "RestClearance"):  # documents saved before it existed
-            obj.addProperty("App::PropertyVectorDistance", "RestClearance", _GROUP,
-                            "End mill radius and allowance the rest area was computed for (internal)")
+        if hasattr(obj, "RestClearance"):  # 0.2.0 stored the first clearance op's end mill only
+            obj.removeProperty("RestClearance")
+        if not hasattr(obj, "RestChain"):
+            obj.addProperty("App::PropertyString", "RestChain", _GROUP,
+                            "End mills and allowances of the clearance ops the rest area was computed for "
+                            "(internal)")
         obj.setEditorMode("BaseShapes", 2)  # hidden; edited through the base list
-        obj.setEditorMode("RestClearance", 2)
+        obj.setEditorMode("RestChain", 2)
 
     def opSetDefaultValues(self, obj, job):
         if job and job.Model.Group:
@@ -239,6 +256,10 @@ class ObjectVCarveFlat(PathOp.ObjectOp):
         return tool_shape(tool) == "VBit"
 
     def opExecute(self, obj):
+        with progress.op_task(self, obj):
+            self.carve(obj)
+
+    def carve(self, obj):
         if not _is_vbit_tc(obj):
             Path.Log.error(f"{obj.Label}: the tool controller must use a V-bit")
             return
@@ -246,16 +267,13 @@ class ObjectVCarveFlat(PathOp.ObjectOp):
         if not levels:
             return
         last = levels[-1]
-        # Stored before any early return: the clearance op compares it with its own tool and
-        # touches this op on a mismatch (it has no other way to know the end mill changed).
+        # Stored before any early return: the clearance ops compare it with their chain and touch
+        # this op on a mismatch (they have no other way to know an end mill changed).
         cops = clearance_ops(obj) if last.flat else []
-        cop = cops[0] if cops else None
-        if len(cops) > 1:
-            Path.Log.warning(f"{obj.Label}: several active V-Carve Clearance ops link this op; the V-bit "
-                             f"rest area is computed for {cop.Label} only")
-        rc = rest_clearance(cop)
-        if obj.RestClearance != rc:
-            obj.RestClearance = rc
+        tools = chain_tools(cops)
+        key = chain_key(cops)
+        if obj.RestChain != key:
+            obj.RestChain = key
         sets = self.regions(obj)
         if not sets:
             Path.Log.warning(f"{obj.Label}: no sketches selected, nothing to cut")
@@ -268,8 +286,11 @@ class ObjectVCarveFlat(PathOp.ObjectOp):
             if isinstance(faces, SketchError):
                 Path.Log.error(str(faces))
                 continue
+            progress.step()
             try:
-                carved = _carve_levels(obj, levels, label, faces, rc)
+                carved = _carve_levels(obj, levels, label, faces, tools)
+            except progress.Cancelled:
+                raise
             except Exception as exc:
                 Path.Log.error(f"{label}: carving failed ({exc})")
                 continue
@@ -278,7 +299,7 @@ class ObjectVCarveFlat(PathOp.ObjectOp):
                     group += paths
             if any(wide for *_, wide in carved):
                 Path.Log.warning(f"{label}: areas wider than the V-bit; set Flat Depth to clear them")
-        if any(level[0] for level in groups) and cop is None:
+        if any(level[0] for level in groups) and not cops:
             Path.Log.warning(f"{obj.Label}: no V-Carve Clearance op, so the V-bit is clearing the whole "
                              "floor (slow); add a V-Carve Clearance op with an end mill")
         ordered, pos = [], (0.0, 0.0)

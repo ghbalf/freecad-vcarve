@@ -42,3 +42,17 @@ def make_job(doc, sketches, bits=("60degree_Vbit", "5mm_Endmill")):
         tcs[bit] = tc
     doc.recompute()
     return job, tcs
+
+
+def add_clearance(doc, job, link, diameter, rest_only=False):
+    """A V-Carve Clearance op at the end of job, linked to link, with a new end mill of diameter."""
+    from vcarve_flat import op_clearance
+    tc = Path.Tool.Controller.Create("EndMill", tool=_tool(doc, "5mm_Endmill"))
+    tc.Tool.Diameter = diameter
+    job.Proxy.addToolController(tc)
+    op = op_clearance.Create("VCarveClearance", parentJob=job, tc=tc)
+    op.VCarveOp = link
+    op.RestOnly = rest_only
+    op.Proxy.opUpdateDepths(op)
+    doc.recompute()
+    return op

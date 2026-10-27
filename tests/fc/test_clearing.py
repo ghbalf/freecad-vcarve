@@ -6,7 +6,8 @@ import FreeCAD as App
 import numpy as np
 import Part
 
-from vcarve_flat.clearing import area_offset, inside_loops, intersect, mirror_faces, union
+from vcarve_flat.clearing import (area_offset, inside_loops, intersect, mirror_faces, pocket_polylines, rest_faces,
+                                    rest_region, subtract, swept_faces, union)
 from vcarve_flat.sketches import faces_from_loops
 
 V = App.Vector
@@ -94,3 +95,36 @@ class TestInsideLoops(unittest.TestCase):
         out = inside_loops([a, b], faces)
         self.assertEqual(len(out), 1)
         self.assertIs(out[0], a)
+
+
+class TestRestChain(unittest.TestCase):
+    def setUp(self):
+        pts = [(0, 0), (30, 0), (30, 8), (10, 8), (10, 20), (0, 20)]  # 30 x 20 with an L notch
+        self.floor = [Part.Face(Part.makePolygon([V(x, y, 0) for x, y in pts + pts[:1]]))]
+
+    def test_rest_faces_chain(self):
+        big, both = rest_faces(self.floor, [(3, 0)]), rest_faces(self.floor, [(3, 0), (1, 0)])
+        self.assertLess(area(both), area(big))
+        self.assertGreater(area(both), 0)  # the corners keep their radius-1 arcs
+        self.assertAlmostEqual(area(both), area(rest_faces(self.floor, [(1, 0), (3, 0)])), delta=1e-3)
+        self.assertEqual(rest_faces(self.floor, []), self.floor)
+
+    def test_rest_region_reaches_slivers(self):
+        region = rest_region(self.floor, [(3, 0)], 1)
+        self.assertTrue(pocket_polylines(region, 1, 0.8, "Offset", 0, 0, 0.01))
+        want = area(subtract(rest_faces(self.floor, [(3, 0)]), rest_faces(self.floor, [(3, 0), (1, 0)])))
+        got = area(intersect(swept_faces(region, 1, 0), rest_faces(self.floor, [(3, 0)])))
+        self.assertGreaterEqual(got, 0.9 * want)
+
+    def test_rest_region_with_allowance(self):
+        # The V-bit counts the rest op's whole sweep as cleared, so the pocket of rest_region must cut all of it
+        tools, r, a = [(3, 0)], 1, 0.5
+        assumed = intersect(swept_faces(self.floor, r, a), rest_faces(self.floor, tools))
+        cut = swept_faces(rest_region(self.floor, tools, r, a), r, a)
+        # grown past Path.Area's arc re-fit (0.02 mm): without the allowance in the growth, 0.47 mm^2 stayed
+        self.assertLess(area(subtract(assumed, area_offset(cut, 0.05))), 1e-4)
+
+    def test_rest_region_empty(self):
+        circle = [Part.Face(Part.Wire(Part.makeCircle(5)))]
+        self.assertEqual(rest_region(circle, [(3, 0)], 1), [])
+        self.assertEqual(rest_region(circle, [], 1), circle)

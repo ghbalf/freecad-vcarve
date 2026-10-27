@@ -6,10 +6,13 @@ import FreeCAD as App
 import Part
 import Path
 
-from helpers import make_job, make_sketch
+import Path.Tool.Controller
+
+from helpers import _tool, make_job, make_sketch
 from test_op_vcarve import RECT
 from vcarve_flat.compat import tool_shape
-from vcarve_flat.inlay import create_inlay
+from test_progress import indicator
+from vcarve_flat.inlay import create_inlay, run_inlay
 from vcarve_flat.op_vcarve import tool_vbit
 
 
@@ -97,6 +100,8 @@ class InlayTests(unittest.TestCase):
             board = self.job.Stock.Shape.BoundBox.ZLength  # ExtZpos adds 1 mm above the sketch
             self.assertAlmostEqual(bb.ZMin, min(-board, clr.FinalDepth.Value - 1, plug.FinalDepth.Value - 1))
             self.assertAlmostEqual(plug.StartDepth.Value, 0)
+        # sized before the plug is first computed, not after its warning about Job.Create's 1 mm stock
+        self.assertNotIn("thinner", str(Path.Log.warning.call_args_list))
 
     def test_options_and_clone(self):
         _, _, _, (_, plug) = self.build(self.job.Model.Group[0], boundary="Stock", ridge=False)
@@ -130,6 +135,21 @@ class InlayTests(unittest.TestCase):
         self.assertEqual((qjob.Label, pjob.Label), ("Other Pocket", "Other Plug"))
         self.assertEqual(qjob.Model.Group[0].Objects[0], other)
 
+    def test_inlay_cancel_leaves_nothing(self):
+        self.doc.UndoMode = 1
+        values = dict(vtc=self.vtc, etc=self.etc, pocket_depth=3.0, glue_gap=0.2)
+        names = [o.Name for o in self.doc.Objects]
+        notice = mock.patch.object(Path.Log, "notice").start()
+        patch, _ = indicator(abort_at=3)
+        self.assertIsNone(run_inlay(self.job, self.sk, values))
+        patch.stop()
+        self.assertEqual([o.Name for o in self.doc.Objects], names)
+        self.assertEqual(notice.call_args_list[-1], mock.call("V-Carve Inlay cancelled"))
+        qjob, pocket, pjob, plug = run_inlay(self.job, self.sk, values)  # without Cancel: kept, one undo step
+        self.assertEqual(len([o for o in self.doc.Objects if hasattr(o, "Operations")]), 3)
+        self.assertEqual([o.Name for o in (*pocket, *plug) if "Invalid" in o.State], [])
+        self.assertEqual(self.doc.UndoNames[:1], ["Create V-Carve Inlay"])
+
     def test_not_a_sketch(self):
         box = self.doc.addObject("Part::Box", "Box")
         with self.assertRaises(ValueError):
@@ -139,6 +159,35 @@ class InlayTests(unittest.TestCase):
     def test_wrong_tool_shape(self):
         with self.assertRaises(ValueError):
             create_inlay(self.job, self.sk, self.etc, self.vtc, 3.0, 0.2)
+
+    def rest_tc(self, diameter):
+        tc = Path.Tool.Controller.Create("Rest", tool=_tool(self.doc, "5mm_Endmill"))
+        tc.Tool.Diameter, tc.ToolNumber = diameter, 7
+        return tc
+
+    def test_inlay_rest_end_mill(self):
+        rest_tc = self.rest_tc(1.0)
+        qjob, pocket, pjob, plug_pair = self.build(rest_etc=rest_tc)
+        for job, (clr, carve) in ((qjob, pocket), (pjob, plug_pair)):
+            ops = list(job.Operations.Group)
+            self.assertEqual(len(ops), 3)
+            self.assertEqual((ops[0], ops[2]), (clr, carve))
+            rest = ops[1]
+            self.assertTrue(rest.RestOnly and not clr.RestOnly)
+            self.assertEqual(rest.VCarveOp, carve)
+            self.assertEqual(rest.StepDown, clr.StepDown)
+            self.assertIn(rest.ToolController, job.Tools.Group)
+            self.assertEqual(len(job.Tools.Group), 3)
+            self.assertIsNot(rest.ToolController.Tool, rest_tc.Tool)
+            self.assertEqual(rest.ToolController.Tool.Diameter, rest_tc.Tool.Diameter)
+            self.assertEqual(rest.ToolController.ToolNumber, 7)
+        self.assertEqual([o.Name for o in self.doc.Objects if "Invalid" in o.State or "Error" in o.State], [])
+
+    def test_inlay_rest_not_smaller(self):
+        for d in (5.0, 6.0):
+            with self.assertRaisesRegex(ValueError, "must be smaller"):
+                create_inlay(self.job, self.sk, self.vtc, self.etc, 3.0, 0.2, rest_etc=self.rest_tc(d))
+        self.assertEqual(len([o for o in self.doc.Objects if hasattr(o, "Operations")]), 1)
 
 
 if __name__ == "__main__":

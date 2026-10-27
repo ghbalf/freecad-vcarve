@@ -7,7 +7,7 @@ import numpy as np
 import Part
 import Path
 
-from helpers import make_job, make_sketch
+from helpers import add_clearance, make_job, make_sketch
 from vcarve_flat import op_vcarve
 from vcarve_flat.geom import VBit, flat_radius
 from vcarve_flat.toolpath import paths_to_commands
@@ -15,6 +15,7 @@ from vcarve_flat.toolpath import paths_to_commands
 RECT = [(0, 0), (40, 0), (40, 20), (0, 20)]
 RING = [(70, 10, 10), (70, 10, 4)]
 L_SHAPE = [(0, 0), (40, 0), (40, 10), (10, 10), (10, 30), (0, 30)]
+L_FAR = [(x + 50, y) for x, y in L_SHAPE]
 
 
 def cut_points(op):
@@ -36,6 +37,15 @@ def g1_segments(op):
             out.append((pos, new))
         pos = new
     return np.array([a for a, _ in out]), np.array([b for _, b in out])
+
+
+def g1_length(op, z=None) -> float:
+    """XY length of the G1 moves, only those at height z if given."""
+    a, b = g1_segments(op)
+    if not len(a):
+        return 0.0
+    keep = np.ones(len(a), bool) if z is None else (np.abs(a[:, 2] - z) < 1e-6) & (np.abs(b[:, 2] - z) < 1e-6)
+    return float(np.hypot(*(b - a)[keep, :2].T).sum())
 
 
 def z_on_path(points, segments):
@@ -242,13 +252,24 @@ class OpVCarveTests(unittest.TestCase):
         self.assert_inside(cut_points(op), 0, 0, 40, 20)
         self.assertTrue(self.logged(self.err, "MyBox: not a sketch"), self.err.call_args_list)
 
-    def test_rest_clearance_hidden_and_restored(self):
+    def test_rest_chain_hidden_and_restored(self):
         (clone,) = self.job_with(make_sketch(self.doc, "Rect", [RECT]))
         op = self.make_op([clone], FlatDepth=1.0)
-        self.assertIn("Hidden", op.getEditorMode("RestClearance"))
-        op.removeProperty("RestClearance")
+        self.assertIn("Hidden", op.getEditorMode("RestChain"))
+        op.removeProperty("RestChain")
         op.Proxy.opOnDocumentRestored(op)  # a document saved before the property existed
-        self.assertIn("Hidden", op.getEditorMode("RestClearance"))
+        self.assertIn("Hidden", op.getEditorMode("RestChain"))
+
+    def test_vbit_rest_shrinks_with_rest_op(self):
+        (clone,) = self.job_with(make_sketch(self.doc, "Design", [RECT, L_FAR]))
+        self.tc.Tool.TipDiameter = 0  # 1.0's V-bit has a 1 mm tip, too wide for the rest corners
+        op = self.make_op([clone], FlatDepth=2.0)
+        add_clearance(self.doc, self.job, op, 5.0)
+        one = g1_length(op, -2.0)
+        add_clearance(self.doc, self.job, op, 1.0, rest_only=True)
+        self.assertEqual(op.RestChain, "2.5,0;0.5,0")
+        self.assertLess(g1_length(op, -2.0), one)
+        self.assertFalse(self.logged(self.warn, "several"), self.warn.call_args_list)
 
     def test_no_double_carve(self):
         (clone,) = self.job_with(make_sketch(self.doc, "Rect", [RECT]))

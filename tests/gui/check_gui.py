@@ -4,17 +4,21 @@ Prints GUI-CHECK-OK and exits 0 on success; prints the traceback and exits 1 oth
 import os
 import sys
 import tempfile
+import time
 import types
 import traceback
 from unittest import mock
 
 import FreeCAD as App
 import FreeCADGui as Gui
+import numpy as np
+import Path
 from PySide import QtCore, QtGui
 
 # The addon link made by tests/test_gui.py; gives the test helpers without relying on __file__.
 sys.path.insert(0, os.path.join(os.environ["FREECAD_USER_HOME"], "Mod", "freecad-vcarve", "tests", "fc"))
-NAMES = ["CAM_VCarveFlat", "CAM_VCarveClearance", "CAM_VCarvePair", "CAM_VCarvePlug", "CAM_VCarveInlay"]
+NAMES = ["CAM_VCarveFlat", "CAM_VCarveClearance", "CAM_VCarvePair", "CAM_VCarvePlug", "CAM_VCarveInlay",
+         "CAM_VCarveFit"]
 
 
 def toolbar_entries(title):
@@ -35,6 +39,135 @@ def edit(op):
     Gui.Control.closeDialog()
     Gui.ActiveDocument.resetEdit()
     QtGui.QApplication.processEvents()  # let the closed panel go before the next one opens
+
+
+def press_esc():
+    QtGui.QApplication.sendEvent(Gui.getMainWindow(), QtGui.QKeyEvent(QtCore.QEvent.KeyPress, QtCore.Qt.Key_Escape,
+                                                                      QtCore.Qt.NoModifier))
+
+
+def spin(progress):
+    """Steps for up to 5 s; the time until Cancelled."""
+    t0 = time.monotonic()
+    try:
+        with progress.task("GUI check"):
+            while time.monotonic() - t0 < 5:
+                progress.step()
+                time.sleep(0.01)
+    except progress.Cancelled:
+        return time.monotonic() - t0
+    raise AssertionError("Esc did not cancel")
+
+
+def check_progress(doc):
+    """Events flow and Esc cancels, on its own and inside a recompute (where FreeCAD's sequencer ignores ours),
+    there with no prompt of FreeCAD's and for the recompute's later objects too."""
+    from vcarve_flat import progress
+    fired, asked = [], []
+
+    def answer():  # FreeCAD's "abort the rest of the recompute?" must not show
+        box = QtGui.QApplication.activeModalWidget()
+        if isinstance(box, QtGui.QMessageBox):
+            asked.append(box.text())
+            box.button(QtGui.QMessageBox.No).click()
+    closer = QtCore.QTimer()
+    closer.timeout.connect(answer)
+    closer.start(50)
+    QtCore.QTimer.singleShot(0, lambda: fired.append(1))
+    QtCore.QTimer.singleShot(300, press_esc)
+    assert spin(progress) < 2 and fired and not asked, (fired, asked)
+
+    order = []  # the first object recomputed gets the Esc
+
+    class Slow:
+        def __init__(self, obj):
+            obj.Proxy, self.took = self, None
+
+        def execute(self, obj):
+            if not order:
+                QtCore.QTimer.singleShot(300, press_esc)
+            order.append(obj)
+            self.took = spin(progress)
+
+    slow = [doc.addObject("App::FeaturePython", f"Slow{i}") for i in range(3)]
+    for obj in slow:
+        Slow(obj)
+    doc.recompute()
+    closer.stop()
+    took = [obj.Proxy.took for obj in order]
+    assert not asked, asked
+    assert len(took) == 3 and took[0] < 2 and max(took[1:]) < 0.1, took
+    t0 = time.monotonic()
+    while progress.cancelled() and time.monotonic() - t0 < 2:  # held until the event loop runs
+        QtGui.QApplication.processEvents()
+        time.sleep(0.01)
+    assert not progress.cancelled()
+    for obj in slow:
+        doc.removeObject(obj.Name)
+    # Steps stay cheap however slow FreeCAD's indicator and event processing are (1.1 offscreen: 0.35 s a beat)
+    QtGui.QApplication.processEvents()
+    with progress.task("GUI check"):
+        t0, slept = time.monotonic(), 0.0
+        while time.monotonic() - t0 < 2:
+            progress.step()
+            t = time.monotonic()
+            time.sleep(0.002)
+            slept += time.monotonic() - t
+    assert slept > 1, slept  # of the 2 s; 0.12 s when every step beat the indicator
+
+
+def check_tree(doc, jobs):
+    """Each Job shows its Operations, Model, Tools, Stock and SetupSheet nested below it, not beside it."""
+    QtGui.QApplication.processEvents()
+    tree = next(t for t in Gui.getMainWindow().findChildren(QtGui.QTreeWidget) if t.topLevelItemCount())
+    root = next(tree.topLevelItem(i) for i in range(tree.topLevelItemCount())
+                if tree.topLevelItem(i).text(0) == doc.Label)
+    top = [root.child(i).text(0) for i in range(root.childCount())]
+    loose = [o.Label for j in jobs for o in j.OutList if o.Label in top]
+    assert not loose, f"Job children at the document's top level: {loose}"
+
+
+def check_fit(doc, plug):
+    """Check Inlay Fit: one Fit object per inlay, its squares red (collisions) and blue (voids)."""
+    from vcarve_flat import fit, fit_object
+    from vcarve_flat.gui import commands
+
+    def fits():
+        return fit_object.find(doc)
+    Gui.Selection.clearSelection()
+    with mock.patch.object(Path.Log, "error") as error:
+        Gui.runCommand("CAM_VCarveFit")
+        assert "Select the plug" in str(error.call_args), error.call_args
+        Gui.Selection.addSelection(plug)
+        for _ in range(2):
+            Gui.runCommand("CAM_VCarveFit")
+            QtGui.QApplication.processEvents()
+            assert len(fits()) == 1, [o.Label for o in fits()]
+        assert error.call_count == 1, error.call_args_list
+    obj = fits()[0]
+    assert isinstance(obj.ViewObject.Proxy, commands.FitViewProvider), obj.ViewObject.Proxy
+    assert os.path.isfile(obj.ViewObject.Proxy.getIcon())
+    assert not {"Invalid", "Touched"} & set(obj.State), obj.State
+    Gui.Selection.clearSelection()
+
+    pts = np.array([(x, y) for x in range(4) for y in range(3)], float)  # both colours, however the inlay fits
+    hits = pts[:, 0] < 1
+    result = fit.FitResult(pts, 1.0, np.zeros(len(pts)), np.zeros(len(pts)), hits, ~hits, -0.1, 0.3, fit.chain(plug))
+    made = fit_object.create(doc, plug, result)
+    commands._show_fit(made)
+    colours = [tuple(round(c, 2) for c in m.DiffuseColor[:3]) for m in made.ViewObject.ShapeAppearance]
+    n = len(made.Shape.SubShapes[0].Faces)
+    assert n and len(made.Shape.Faces) > n, [len(s.Faces) for s in made.Shape.SubShapes]
+    assert colours == [(1, 0, 0)] * n + [(0, 0.3, 1)] * (len(made.Shape.Faces) - n), colours
+    opaque = [(m.Transparency, m.DiffuseColor[3]) for m in made.ViewObject.ShapeAppearance]
+    assert made.ViewObject.Transparency == 0 and all(a == 1 for _, a in opaque), (made.ViewObject.Transparency, opaque)
+    doc.removeObject(made.Name)
+    none = np.zeros(len(pts), bool)  # a fitting inlay: no faces, no colours
+    made = fit_object.create(doc, plug, fit.FitResult(pts, 1.0, none * 0., none * 0., none, none, 0., 0., result.ops))
+    commands._show_fit(made)
+    QtGui.QApplication.processEvents()
+    assert not made.Shape.Faces and isinstance(made.ViewObject.Proxy, commands.FitViewProvider)
+    doc.removeObject(made.Name)
 
 
 def main():
@@ -116,6 +249,18 @@ def main():
     clr.VCarveOp = vc
     accept_clearance()
     assert clr.VCarveOp == vc
+    for rest in (True, False):  # the checkbox shows RestOnly, and OK writes the toggled box back
+        clr.RestOnly = rest
+        clr.ViewObject.Document.setEdit(clr.ViewObject, 0)
+        panel = clr.ViewObject.Proxy.panel
+        box = next(p.form.RestOnly for p in panel.featurePages if hasattr(p.form, "RestOnly"))
+        assert box.isChecked() == rest, f"RestOnly {rest} shown as {box.isChecked()}; obj {clr.RestOnly}"
+        box.setChecked(not rest)
+        for page in panel.featurePages:
+            page.setDirty()
+        panel.accept()
+        QtGui.QApplication.processEvents()
+        assert clr.RestOnly == (not rest), f"RestOnly not written back: {clr.RestOnly}"
 
     Gui.Selection.clearSelection()
     Gui.Selection.addSelection(sk, "Vertex1")
@@ -188,6 +333,26 @@ def main():
     assert abs(dialog.pocket.value() - p2) < 0.01 and abs(dialog.glue.value() - g2) < 0.01, "V-bit change keeps P and G"
     assert ok.isEnabled() and not dialog.error.text()
 
+    assert dialog.rest.itemText(0) == "None" and dialog.rest.count() == 2 and dialog.values()["rest_etc"] is None
+    dialog.rest.setCurrentIndex(1)  # the end mill itself
+    assert not ok.isEnabled() and "smaller" in dialog.error.text(), "an equal rest end mill is accepted"
+    dialog.rest.setCurrentIndex(0)
+    assert ok.isEnabled() and not dialog.error.text()
+
+    check_progress(doc)
+    names = [o.Name for o in doc.Objects]
+    esc = QtCore.QTimer()
+    esc.timeout.connect(press_esc)
+    with mock.patch.object(inlay_dialog.InlayDialog, "exec_", lambda self: QtGui.QDialog.Accepted):
+        Gui.Selection.addSelection(doc.getObject("Letters"))
+        esc.start(50)
+        Gui.runCommand("CAM_VCarveInlay")
+        esc.stop()
+        QtGui.QApplication.processEvents()
+    assert [o.Name for o in doc.Objects] == names and len(warnings) == 1, \
+        f"cancelled Inlay left {set(o.Name for o in doc.Objects) - set(names)}; {warnings}"
+    Gui.Selection.clearSelection()
+
     ops0, tools0 = list(job0.Operations.Group), list(job0.Tools.Group)
     seen = []
     with mock.patch.object(inlay_dialog.InlayDialog, "exec_",
@@ -196,11 +361,12 @@ def main():
         Gui.runCommand("CAM_VCarveInlay")
         QtGui.QApplication.processEvents()
     assert len(warnings) == 1 and len(seen) == 1, warnings
-    assert set(seen[0]) == {"vtc", "etc", "pocket_depth", "glue_gap", "boundary", "ridge"}, seen
+    assert set(seen[0]) == {"vtc", "etc", "pocket_depth", "glue_gap", "boundary", "ridge", "rest_etc"}, seen
     jobs = PathUtils.GetJobs()
     assert len(jobs) == 3, [j.Label for j in jobs]
     assert (list(job0.Operations.Group), list(job0.Tools.Group)) == (ops0, tools0), "Inlay changed the selected Job"
     qjob, pjob = (next(j for j in jobs if j.Label == f"Letters {s}") for s in ("Pocket", "Plug"))
+    check_tree(doc, jobs)
     for j in jobs:
         for op in j.Operations.Group:
             want = "Endmill" if hasattr(op, "VCarveOp") else "VBit"
@@ -216,6 +382,7 @@ def main():
     page = types.SimpleNamespace(job=pjob)
     assert plug in panels.ClearanceOpPage._vcarve_ops(page), "clearance combo omits the plug op"
 
+    check_fit(doc, plug)
     pocket = plug.PocketOp
     plug.Active = False  # its recompute is slow and not under test
     plug.ViewObject.Document.setEdit(plug.ViewObject, 0)

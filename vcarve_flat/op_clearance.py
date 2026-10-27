@@ -5,8 +5,8 @@ import Path
 import Path.Base.SetupSheet as PathSetupSheet
 import Path.Op.Base as PathOp
 
-from . import op_vcarve
-from .clearing import pocket_polylines
+from . import observer, op_vcarve, progress
+from .clearing import pocket_polylines, rest_region
 from .compat import tool_shape
 from .geom import order_paths
 from .sketches import SketchError
@@ -16,6 +16,8 @@ _GROUP = "V-Carve"
 _PROPS = [  # (type, name, default, tooltip)
     ("App::PropertyPercent", "StepOver", 40, "Stepover as a percentage of the tool diameter"),
     ("App::PropertyLength", "Allowance", op_vcarve.mm(0), "Distance kept from the floor boundary"),
+    ("App::PropertyBool", "RestOnly", False,
+     "Clear only what the clearance ops before this one (same V-carve op) could not reach"),
 ]
 
 
@@ -45,10 +47,19 @@ class ObjectVCarveClearance(PathOp.ObjectOp):
         obj.addProperty("App::PropertyEnumeration", "PocketPattern", _GROUP, "Clearing pattern")
         obj.PocketPattern = ["Offset", "ZigZag"]
         obj.PocketPattern = "Offset"
-        for typ, name, value, tip in _PROPS:
-            obj.addProperty(typ, name, _GROUP, tip)
-            setattr(obj, name, value)
+        self._add_properties(obj)
         obj.setEditorMode("StepDown", 2)  # unused: the levels come from the linked op
+
+    def _add_properties(self, obj):
+        """The _PROPS and RestChain that obj lacks (all when created, the newer ones in older documents)."""
+        for typ, name, value, tip in _PROPS:
+            if not hasattr(obj, name):
+                obj.addProperty(typ, name, _GROUP, tip)
+                setattr(obj, name, value)
+        if not hasattr(obj, "RestChain"):
+            obj.addProperty("App::PropertyString", "RestChain", _GROUP,
+                            "End mills and allowances of the clearance ops before this one (internal)")
+        obj.setEditorMode("RestChain", 2)
 
     def opSetDefaultValues(self, obj, job):
         self.opUpdateDepths(obj)
@@ -65,10 +76,12 @@ class ObjectVCarveClearance(PathOp.ObjectOp):
 
     def opOnDocumentRestored(self, obj):
         self._prev_link = obj.VCarveOp.Name if obj.VCarveOp else None
+        self._add_properties(obj)
         obj.setEditorMode("StepDown", 2)
 
     def opOnChanged(self, obj, prop):
-        # Fires during creation and restore, before the properties exist.
+        # Fires during creation and restore, before the properties exist. RestOnly is left out: it changes
+        # neither the V-carve op's rest area nor the later ops' (see chain_key).
         if prop not in ("ToolController", "Allowance", "VCarveOp", "Active") or "Restore" in obj.State:
             return
         if prop == "ToolController":
@@ -88,6 +101,10 @@ class ObjectVCarveClearance(PathOp.ObjectOp):
         return tool_shape(tool) == "Endmill"
 
     def opExecute(self, obj):
+        with progress.op_task(self, obj):
+            self._clear(obj)
+
+    def _clear(self, obj):
         link = obj.VCarveOp
         if link is None:
             Path.Log.info(f"{obj.Label}: no V-Carve operation linked yet")
@@ -104,11 +121,19 @@ class ObjectVCarveClearance(PathOp.ObjectOp):
         if not levels[-1].flat:
             Path.Log.info(f"{obj.Label}: the linked V-Carve operation has no Flat Depth, nothing to clear")
             return
-        if link.Active and op_vcarve.find_clearance_op(link) == obj \
-                and link.RestClearance != op_vcarve.rest_clearance(obj):
-            # The end mill changed (e.g. its diameter) after the V-carve op computed its rest area.
-            # Touched during a recompute, FreeCAD recomputes it (and this op) again in the same call.
+        cops = op_vcarve.clearance_ops(link)
+        i = cops.index(obj) if obj in cops else len(cops)
+        before = cops[:i]
+        if link.Active and link.RestChain != op_vcarve.chain_key(cops):
+            # An end mill of the chain changed (e.g. its diameter) after the V-carve op computed its rest
+            # area. Touched during a recompute, FreeCAD recomputes it (and this op) again in the same call.
             link.touch()
+        for j in range(i + 1, len(cops)):  # the later ops' rest areas depend on this op's end mill
+            if cops[j].RestChain != op_vcarve.chain_key(cops[:j]):
+                cops[j].touch()
+        key = op_vcarve.chain_key(before)
+        if obj.RestChain != key:
+            obj.RestChain = key
         tc = obj.ToolController
         diameter = tc.Tool.Diameter.Value
         error = link.Proxy.end_mill_error(link, diameter)
@@ -117,14 +142,27 @@ class ObjectVCarveClearance(PathOp.ObjectOp):
             return
         radius = diameter / 2
         stepover = obj.StepOver / 100 * diameter
+        tools = op_vcarve.chain_tools(before) if obj.RestOnly else []
+        if obj.RestOnly and not tools:
+            Path.Log.warning(f"{obj.Label}: Rest Only is set but there is no clearance op before it on "
+                             f"{link.Label}, so it clears the whole floor")
+        elif tools and radius >= min(r for r, _ in tools):
+            Path.Log.warning(f"{obj.Label}: its end mill ({diameter:g} mm) is not smaller than every end mill "
+                             f"before it on {link.Label}, so it clears little or nothing")
         by_level = [[] for _ in levels]
         for label, faces in link.Proxy.regions(link):
             if isinstance(faces, SketchError):
                 continue  # the V-carve op logs it
+            cut = []
             try:
-                cut = [pocket_polylines(link.Proxy.floor(link, cs, faces), radius, stepover, obj.PocketPattern,
-                                        obj.Allowance.Value, cs.z_top - cs.depth, link.Discretize)
-                       for cs in levels]
+                for cs in levels:
+                    progress.step()
+                    cut.append(pocket_polylines(rest_region(link.Proxy.floor(link, cs, faces), tools, radius,
+                                                            obj.Allowance.Value),
+                                                radius, stepover, obj.PocketPattern, obj.Allowance.Value,
+                                                cs.z_top - cs.depth, link.Discretize))
+            except progress.Cancelled:
+                raise
             except Exception as exc:
                 Path.Log.error(f"{label}: end mill floor clearing failed ({exc})")
                 continue
@@ -145,7 +183,7 @@ class ObjectVCarveClearance(PathOp.ObjectOp):
 
 
 def SetupProperties():
-    return ["StepOver", "PocketPattern", "Allowance"]
+    return ["StepOver", "PocketPattern", "Allowance", "RestOnly"]
 
 
 def Create(name, obj=None, parentJob=None, tc=None):
@@ -180,3 +218,4 @@ def create_pair(job, vtc=None, etc=None, vcarve_create=op_vcarve.Create, name="V
 
 
 PathSetupSheet.RegisterOperation("VCarveClearance", Create, SetupProperties)
+observer.install()

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
-"""GUI commands creating the V-Carve ops, and their view provider.
+"""GUI commands creating the V-Carve ops and checking an inlay's fit, and their view providers.
 
 PathOpGui.SetupOperation/Create hardcode CAM's own ViewProvider, so create() mirrors Create
 with ours. The FreeCAD command names are registered by InitGui.py, which delegates here."""
@@ -7,13 +7,13 @@ import os
 
 import FreeCAD as App
 import FreeCADGui as Gui
-import Path.Main.Gui.Job as JobGui
+import Path
 import Path.Op.Base as PathOp
 import Path.Op.Gui.Base as PathOpGui
 import PathScripts.PathUtils as PathUtils
 from PySide import QtCore, QtGui
 
-from .. import inlay, op_clearance, op_plug, op_vcarve  # noqa: F401  (op_plug: registers it with the setup sheet)
+from .. import fit_object, inlay, op_clearance, op_plug, op_vcarve  # noqa: F401  (op_plug: registers it with the setup sheet)
 from ..compat import tool_shape
 from ..sketches import is_sketch_base
 from . import inlay_dialog, panels, selection
@@ -25,6 +25,7 @@ _ICON = {"VCarveOpPage": "vcarve_flat.svg", "ClearanceOpPage": "vcarve_clearance
 _NO_TC = {"VCarveFlat": "Add a V-bit tool controller to the job",
           "VCarveClearance": "Add an end mill tool controller to the job",
           "VCarvePlug": "Add a V-bit tool controller to the job"}
+RED, BLUE = (1.0, 0.0, 0.0), (0.0, 0.3, 1.0)  # no 4th value: transparency on 1.0, alpha on 1.1+
 
 
 class ViewProvider(PathOpGui.ViewProvider):
@@ -167,28 +168,53 @@ class _InlayCommand:
         dialog = inlay_dialog.InlayDialog(job, vtcs, etcs)
         if not dialog.exec_():
             return
-        doc = App.ActiveDocument
-        doc.openTransaction("Create V-Carve Inlay")
-        try:
-            pocket_job, pocket, plug_job, plug = inlay.create_inlay(job, selected[0], **dialog.values())
-            for new_job in (pocket_job, plug_job):  # as JobGui.Create
-                new_job.ViewObject.Proxy = JobGui.ViewProvider(new_job.ViewObject)
-                new_job.ViewObject.addExtension("Gui::ViewProviderGroupExtensionPython")
-                new_job.ViewObject.Proxy.deleteOnReject = False
+        def attach(made):  # inside the creation's transaction
+            _, pocket, _, plug = made
             vcarve_res, clearance_res, plug_res = self.res
             for (clearance, carve), carve_res in ((pocket, vcarve_res), (plug, plug_res)):
                 _attach(clearance, clearance_res, False)
                 _attach(carve, carve_res, False)
+
+        try:
+            if inlay.run_inlay(job, selected[0], dialog.values(), attach):
+                job.Document.recompute()
         except ValueError as e:
-            doc.abortTransaction()
-            doc.recompute()
+            job.Document.recompute()
             _warn(str(e))
+
+
+class FitViewProvider:
+    """The Fit object's view provider: its icon (the colours are the view object's own, saved with it)."""
+
+    def __init__(self, vobj):
+        vobj.Proxy = self
+
+    def getIcon(self):
+        return os.path.join(ICONS, "vcarve_fit.svg")
+
+    def dumps(self):
+        return None
+
+    def loads(self, state):
+        return None
+
+
+def _show_fit(obj):
+    """Collision squares red, void squares blue, opaque (DiffuseColor sets ShapeAppearance on 1.1+ too)."""
+    vobj = obj.ViewObject
+    FitViewProvider(vobj)
+    vobj.Transparency = 0
+    hits = len(obj.Shape.SubShapes[0].Faces)
+    vobj.DiffuseColor = [RED] * hits + [BLUE] * (len(obj.Shape.Faces) - hits)
+
+
+class _FitCommand:
+    def Activated(self):
+        plug = fit_object.plug_of(Gui.Selection.getSelection())
+        if plug is None:
+            Path.Log.error(translate("CAM_VCarve", "Select the plug or pocket op or Job of a V-Carve Inlay"))
             return
-        except Exception:
-            doc.abortTransaction()
-            raise
-        doc.commitTransaction()
-        doc.recompute()
+        fit_object.run(plug, _show_fit)
 
 
 _COMMANDS = {}
@@ -208,5 +234,5 @@ def register():
                    "V-Carve Plug", "Carve the plug of a V-carve inlay")
         _COMMANDS.update(CAM_VCarveFlat=_OpCommand(vcarve), CAM_VCarveClearance=_OpCommand(clearance),
                          CAM_VCarvePair=_PairCommand(vcarve, clearance), CAM_VCarvePlug=_OpCommand(plug),
-                         CAM_VCarveInlay=_InlayCommand(vcarve, clearance, plug))
+                         CAM_VCarveInlay=_InlayCommand(vcarve, clearance, plug), CAM_VCarveFit=_FitCommand())
     return _COMMANDS
