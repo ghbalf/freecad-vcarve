@@ -164,8 +164,8 @@ left (inside the pocket, a gap wider than the glue gap by more than 0.1 mm). The
 worst void, the number of colliding grid points) goes to the report view. A new check replaces the previous Fit object,
 as one undo step.
 
-The check refuses ops that are touched or invalid, and a pocket or plug op that is inactive or without a
-toolpath ("recompute it first"). A clearance op with nothing to cut, such as a rest end mill that fits
+The check refuses ops that are touched or invalid or a pocket or plug op without a toolpath ("recompute it
+first"), and an inactive pocket or plug op. A clearance op with nothing to cut, such as a rest end mill that fits
 nowhere, is skipped with a notice. The Fit
 object never simulates again by itself: when the ops' toolpaths change it only marks itself
 "outdated: run Check Inlay Fit". The grid is 0.25 mm, so features smaller than that can be missed.
@@ -173,7 +173,8 @@ object never simulates again by itself: when the ops' toolpaths change it only m
 ## Progress and cancel
 
 Ops, V-Carve Inlay and Check Inlay Fit show a progress indicator in the GUI. Press **Esc** to cancel; there
-is no confirmation. In a recompute, Esc cancels the running op and every later one of that recompute. A
+is no confirmation. In a recompute, Esc cancels the running op and every later V-Carve
+or clearance op of that recompute. A
 cancelled op keeps an empty path and an error mark (recompute it to try again), a cancelled V-Carve Inlay
 leaves nothing behind, and a cancelled check keeps the old Fit object. Headless (`freecadcmd`) there is no
 indicator and no cancel.
