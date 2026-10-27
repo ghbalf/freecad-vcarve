@@ -21,7 +21,8 @@ class Cancelled(Exception):
 
 
 def _watch_gui():
-    """(poll, remove): poll processes pending events at most every _PERIOD; an application event filter,
+    """(poll, remove): poll(beat) beats the indicator and processes pending events at most every _PERIOD, and
+    at most a quarter of the time when that is slow (offscreen, FreeCAD 1.1 takes 0.35 s); an application event filter,
     installed after FreeCAD's sequencer's (which swallows Esc), turns Esc into Cancel."""
     from PySide import QtCore, QtGui
 
@@ -32,13 +33,16 @@ def _watch_gui():
                 _cancelled = True
             return False  # FreeCAD's sequencer sees it too: in a recompute it then offers to abort the rest
 
-    app, esc, last = QtGui.QApplication.instance(), Esc(), [time.monotonic()]
+    app, esc, due = QtGui.QApplication.instance(), Esc(), [time.monotonic() + _PERIOD]
     app.installEventFilter(esc)
 
-    def poll():
-        if time.monotonic() - last[0] >= _PERIOD:
+    def poll(beat):
+        start = time.monotonic()
+        if start >= due[0]:
+            beat()
             app.processEvents()
-            last[0] = time.monotonic()
+            end = time.monotonic()
+            due[0] = end + max(_PERIOD, 3 * (end - start))
     return poll, lambda: app.removeEventFilter(esc)
 
 
@@ -62,18 +66,22 @@ def task(text):
             indicator.stop()
 
 
+def _beat():
+    global _cancelled
+    try:
+        _indicator.next(True)
+    except RuntimeError:  # FreeCAD's "abort progress indicator"
+        _cancelled = True
+
+
 def step():
     """Lets the GUI breathe; raises Cancelled once the user cancelled, until the outermost task exits."""
-    global _cancelled
     if _indicator is None:
         return
-    if not _cancelled:
-        try:
-            _indicator.next(True)
-        except RuntimeError:  # FreeCAD's "abort progress indicator"
-            _cancelled = True
-        if _gui:
-            _gui[0]()
+    if not _cancelled and _gui:
+        _gui[0](_beat)
+    elif not _cancelled:
+        _beat()
     if _cancelled:
         raise Cancelled("cancelled")
 

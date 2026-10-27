@@ -3,6 +3,7 @@
 import math
 import os
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -252,6 +253,21 @@ class SquaresTests(unittest.TestCase):
         for mask in (np.random.default_rng(1).random(len(points)) < 0.5, (np.arange(len(points)) % 31) % 2 == 0):
             assert_squares(self, fit_object._squares(points[mask], 0.25, 0), points, mask, 0.25)
 
+    def test_squares_scattered(self):
+        """Thousands of separate patches: each region is built on its own, not in one quadratic union."""
+        x, y = np.meshgrid(np.arange(120) * 0.25 + 0.1, np.arange(120) * 0.25 - 3)
+        points = np.column_stack([x.ravel(), y.ravel()])
+        i, j = np.divmod(np.arange(len(points)), 120)
+        rng = np.random.default_rng(3).random(len(points))
+        mask = (i % 2 == 0) & (j % 2 == 0) & (rng < 0.9) | (rng < 0.01)  # ~3,200 single squares, some pairs
+        with mock.patch.object(progress, "step") as step:
+            start = time.monotonic()
+            shape = fit_object._squares(points[mask], 0.25, 0)
+            took = time.monotonic() - start
+        self.assertLess(took, 3)
+        self.assertGreaterEqual(step.call_count, 64)  # a tile at a time
+        assert_squares(self, shape, points, mask, 0.25)
+
 
 class FitObjectTests(unittest.TestCase):
     def setUp(self):
@@ -336,7 +352,29 @@ class FitObjectTests(unittest.TestCase):
         self.assert_valid(obj)
 
     def fits(self):
-        return [o for o in self.doc.Objects if isinstance(getattr(o, "Proxy", None), fit_object.Fit)]
+        return fit_object.find(self.doc)
+
+    def test_find(self):
+        n = self.n
+        self.assertEqual(fit_object.find(self.doc), [])
+        obj = fit_object.create(self.doc, n.plug, self.result)
+        self.assertEqual((fit_object.find(self.doc), fit_object.find(self.doc, n.plug)), ([obj], [obj]))
+        self.assertEqual(fit_object.find(self.doc, n.vc), [])
+
+    def test_fits_empty(self):
+        """A fitting inlay: both sub-compounds empty, saved and reopened."""
+        r = self.result
+        r.collisions[:], r.voids[:] = False, False
+        obj = fit_object.create(self.doc, self.n.plug, r)
+        self.doc.recompute()
+        self.assertEqual([len(s.Faces) for s in obj.Shape.SubShapes], [0, 0])
+        name, path = obj.Name, os.path.join(tempfile.mkdtemp(), "fits.FCStd")
+        self.doc.saveAs(path)
+        App.closeDocument(self.doc.Name)
+        self.doc = App.openDocument(path)
+        obj = self.doc.getObject(name)
+        self.assertEqual((len(obj.Shape.Faces), obj.Collisions, obj.Voids), (0, 0, 0))
+        self.assert_valid(obj)
 
     def test_run_replaces(self):
         n, attached = self.n, []
@@ -369,6 +407,17 @@ class FitObjectTests(unittest.TestCase):
             self.assertEqual(self.fits(), [old])
         self.err.assert_called_once_with("S: out of date, recompute it first")
 
+    def test_run_cancel_while_marking(self):
+        """Cancel while the squares are built: no Fit object half made, no transaction left open."""
+        n = self.n
+        with mock.patch.object(fitcheck, "check", return_value=self.result), \
+                mock.patch.object(App.Console, "PrintWarning"):
+            old = fit_object.run(n.plug)
+            with mock.patch.object(progress, "step", side_effect=progress.Cancelled):
+                self.assertIsNone(fit_object.run(n.plug))
+        self.assertEqual(self.fits(), [old])
+        self.assertFalse(self.doc.HasPendingTransaction)
+
     def test_summary(self):
         r = self.result
         r.collisions[:], r.voids[:], r.worst_collision, r.worst_void = False, False, 0.0, 0.0
@@ -383,6 +432,12 @@ class FitObjectTests(unittest.TestCase):
             self.assertEqual(fit_object.plug_of([n.etc, sel]), n.plug)
         self.assertIsNone(fit_object.plug_of([n.etc]))
         self.assertIsNone(fit_object.plug_of([]))
+        n.plug.PocketOp = None  # still found: the check then says what is missing
+        for sel in (n.plug, n.pjob):
+            self.assertEqual(fit_object.plug_of([sel]), n.plug)
+        self.assertIsNone(fit_object.plug_of([n.vc]))
+        self.assertIsNone(fit_object.run(n.plug))
+        self.err.assert_called_once_with(f"{n.plug.Label}: no pocket op linked")
 
 
 if __name__ == "__main__":

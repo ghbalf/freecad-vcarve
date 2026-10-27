@@ -91,6 +91,16 @@ def check_progress(doc):
     assert slow.Proxy.took is not None and slow.Proxy.took < 2, slow.Proxy.took
     assert not progress.cancelled()
     doc.removeObject(slow.Name)
+    # Steps stay cheap however slow FreeCAD's indicator and event processing are (1.1 offscreen: 0.35 s a beat)
+    QtGui.QApplication.processEvents()
+    with progress.task("GUI check"):
+        t0, slept = time.monotonic(), 0.0
+        while time.monotonic() - t0 < 2:
+            progress.step()
+            t = time.monotonic()
+            time.sleep(0.002)
+            slept += time.monotonic() - t
+    assert slept > 1, slept  # of the 2 s; 0.12 s when every step beat the indicator
 
 
 def check_fit(doc, plug):
@@ -99,7 +109,7 @@ def check_fit(doc, plug):
     from vcarve_flat.gui import commands
 
     def fits():
-        return [o for o in doc.Objects if isinstance(getattr(o, "Proxy", None), fit_object.Fit)]
+        return fit_object.find(doc)
     Gui.Selection.clearSelection()
     with mock.patch.object(Path.Log, "error") as error:
         Gui.runCommand("CAM_VCarveFit")
@@ -127,6 +137,12 @@ def check_fit(doc, plug):
     assert colours == [(1, 0, 0)] * n + [(0, 0.3, 1)] * (len(made.Shape.Faces) - n), colours
     opaque = [(m.Transparency, m.DiffuseColor[3]) for m in made.ViewObject.ShapeAppearance]
     assert made.ViewObject.Transparency == 0 and all(a == 1 for _, a in opaque), (made.ViewObject.Transparency, opaque)
+    doc.removeObject(made.Name)
+    none = np.zeros(len(pts), bool)  # a fitting inlay: no faces, no colours
+    made = fit_object.create(doc, plug, fit.FitResult(pts, 1.0, none * 0., none * 0., none, none, 0., 0., result.ops))
+    commands._show_fit(made)
+    QtGui.QApplication.processEvents()
+    assert not made.Shape.Faces and isinstance(made.ViewObject.Proxy, commands.FitViewProvider)
     doc.removeObject(made.Name)
 
 
