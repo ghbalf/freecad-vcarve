@@ -250,7 +250,8 @@ class PhotoOpPage(_Page):
         self.labels = {}
         form.ImagePlane = _row(grid, translate("CAM_VCarve", "Image Plane"), QtGui.QComboBox())
         form.Pattern = _row(grid, translate("CAM_VCarve", "Pattern"), QtGui.QComboBox())
-        for prop, label in (("Angle", "Angle"), ("HatchAngle", "Hatch Angle"), ("LineSpacing", "Line Spacing")):
+        for prop, label in (("Angle", "Angle"), ("HatchAngle", "Hatch Angle"), ("MaxDepth", "Max Depth"),
+                            ("MinDepth", "Min Depth"), ("LineSpacing", "Line Spacing")):  # spacing follows depth
             self.quantity(form, grid, prop, translate("CAM_VCarve", label))
             labelled(prop)
         box = QtGui.QWidget()
@@ -265,8 +266,7 @@ class PhotoOpPage(_Page):
         lay.addWidget(form.removeVectors, 1, 1)
         form.VectorsBox = _row(grid, translate("CAM_VCarve", "Vectors"), box)
         labelled("VectorsBox")
-        for prop, label in (("MaxDepth", "Max Depth"), ("MinDepth", "Min Depth"), ("SampleStep", "Sample Step"),
-                            ("Tolerance", "Tolerance")):
+        for prop, label in (("SampleStep", "Sample Step"), ("Tolerance", "Tolerance")):
             self.quantity(form, grid, prop, translate("CAM_VCarve", label))
         form.Contrast = _row(grid, translate("CAM_VCarve", "Contrast"), _double(0, 0, 1000, 10))
         form.Contrast.setSuffix(" %")

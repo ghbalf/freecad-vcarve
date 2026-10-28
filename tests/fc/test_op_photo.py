@@ -81,6 +81,7 @@ class OpPhotoTests(unittest.TestCase):
         op.ToolController = self.tc
         op.ImagePlane = plane
         for k, v in props.items():
+            op.setExpression(k, None)
             setattr(op, k, v)
         self.doc.recompute()
         return op
@@ -114,6 +115,15 @@ class OpPhotoTests(unittest.TestCase):
         self.assertGreater(op.LineSpacing.Value, width)
         self.assertLessEqual(op.LineSpacing.Value, width * 1.05 + 0.1 + 1e-9)
         self.assertFalse(self.logged(self.warn, "merge"))
+
+    def test_default_spacing_follows_max_depth(self):
+        self.job_over()
+        op = self.make_op(self.plane(40, 20, halves(40, 20)))
+        self.assertIn("LineSpacing", dict(op.ExpressionEngine))
+        op.MaxDepth = 1.5
+        self.doc.recompute()
+        width = self.vbit.tip_diameter + 2 * 1.5 * math.tan(self.vbit.half_angle)
+        self.assertAlmostEqual(op.LineSpacing.Value, width * 1.05, places=6)
 
     def test_hatch_reaches_full_depth(self):
         self.job_over()

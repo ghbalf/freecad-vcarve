@@ -204,6 +204,9 @@ def check_photo(doc, job):
     combo = form.ImagePlane
     assert plane.Label in [combo.itemText(i) for i in range(combo.count())], combo.count()
     combo.setCurrentIndex(combo.findData(plane.Name))
+    grid = form.layout()
+    rows = [grid.getItemPosition(grid.indexOf(getattr(form, p)))[0] for p in ("MaxDepth", "MinDepth", "LineSpacing")]
+    assert rows == sorted(rows), rows  # the depths come before the spacing that follows them
 
     def hidden():
         fields = ("Angle", "HatchAngle", "LineSpacing", "VectorsBox", "BandAverage")
@@ -228,6 +231,7 @@ def check_photo(doc, job):
     panel.accept()
     QtGui.QApplication.processEvents()
     assert op.ImagePlane == plane and op.Pattern == "Lines" and op.BandAverage, (op.ImagePlane, op.Pattern)
+    assert "LineSpacing" in dict(op.ExpressionEngine), op.ExpressionEngine
     assert any(c.Name in ("G1", "G01") for c in op.Path.Commands), "no cut after OK"
     assert not Gui.Control.activeDialog(), "the photo panel stayed open"
 

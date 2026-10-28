@@ -180,7 +180,9 @@ Each groove is cut at depth = darkness × `MaxDepth`, where darkness is 0 for wh
 linear (not sRGB) light scale, so black always reaches `MaxDepth`. The bit lifts out where the depth is
 under `MinDepth`. A groove is tip + 2·depth·tan(half angle) wide. When that is wider than `LineSpacing`
 at `MaxDepth`, neighbouring grooves merge into a flat dark area and the op warns. The default spacing
-is the groove width at `MaxDepth` plus 5 %, so the darkest grooves just touch.
+is an expression: the groove width at `MaxDepth` plus 5 %, filled in from the V-bit when the op is
+created, so it follows `MaxDepth`. After switching to another V-bit, clear the expression or edit its
+numbers.
 
 Patterns (group "V-Carve Photo"):
 
@@ -199,7 +201,7 @@ Patterns (group "V-Carve Photo"):
 | `Vectors` | none | Objects whose edges are carved (Custom) |
 | `Angle` | 45° | Direction of the lines, from the X axis |
 | `HatchAngle` | 135° | Direction of the second line set (Hatch) |
-| `LineSpacing` | groove width at `MaxDepth` × 1.05, rounded up to 0.1 mm | Distance between lines |
+| `LineSpacing` | groove width at `MaxDepth` × 1.05, as an expression | Distance between lines; follows `MaxDepth` until you clear the expression (f(x) button) |
 | `MaxDepth` | 2 mm | Depth of black below Start Depth; capped at the V-bit's cone height |
 | `MinDepth` | 0.05 mm | Shallower than this, the bit lifts out |
 | `SampleStep` | 0.25 mm | Distance between depth samples along a line; finer pixels are averaged to it |

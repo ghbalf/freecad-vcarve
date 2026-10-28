@@ -28,9 +28,9 @@ def _deg(value) -> App.Units.Quantity:
 _PROPS = [  # (type, name, default, tooltip)
     ("App::PropertyAngle", "Angle", _deg(45), "Direction of the lines, -90 to 90 degrees from the X axis"),
     ("App::PropertyAngle", "HatchAngle", _deg(135), "Direction of the second line set of the Hatch pattern"),
-    ("App::PropertyLength", "LineSpacing", mm(2.5), "Distance between neighbouring lines"),
     ("App::PropertyLength", "MaxDepth", mm(2), "Depth of black, below Start Depth"),
     ("App::PropertyLength", "MinDepth", mm(0.05), "The bit lifts out where the depth is less than this"),
+    ("App::PropertyLength", "LineSpacing", mm(2.5), "Distance between neighbouring lines"),
     ("App::PropertyLength", "SampleStep", mm(0.25), "Distance between depth samples along a line"),
     ("App::PropertyFloat", "Contrast", 100.0, "Contrast around mid-grey in percent (100 = unchanged)"),
     ("App::PropertyBool", "Invert", False, "Swap dark and light"),
@@ -85,9 +85,9 @@ class ObjectVCarvePhoto(PathOp.ObjectOp):
         if len(planes) == 1:
             obj.ImagePlane = planes[0]
         if _is_vbit_tc(obj):
-            vbit = tool_vbit(obj.ToolController)
-            width = groove_width(vbit, limit_depth(vbit, obj.MaxDepth.Value)[0])
-            obj.LineSpacing = math.ceil(width * 1.05 * 10 - 1e-9) / 10
+            vbit = tool_vbit(obj.ToolController)  # the groove width at Max Depth plus 5 %, as an expression
+            obj.setExpression("LineSpacing", f"({vbit.tip_diameter:g} mm + 2 * min(MaxDepth; {vbit.cone_height:.6g} mm)"
+                                             f" * tan({math.degrees(vbit.half_angle):g} deg)) * 1.05")
 
     def opOnChanged(self, obj, prop):
         if prop == "ToolController" and "Restore" not in obj.State:
