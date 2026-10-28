@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 230" font-family="sans-serif" font-size="13">
+  <rect width="640" height="230" fill="#ffffff"/>
+  <!-- board with a carved stroke: V walls, flat floor -->
+  <path d="M20 70 H170 L230 150 H410 L470 70 H620 V210 H20 Z" fill="#ecd6ac" stroke="#8a6a3a" stroke-width="1.5"/>
+  <!-- end mill area -->
+  <rect x="262" y="120" width="116" height="30" fill="#7fb3d5" fill-opacity="0.55"/>
+  <!-- V-bit rest areas next to the walls -->
+  <path d="M230 150 L208 120 H262 V150 Z" fill="#e59866" fill-opacity="0.6"/>
+  <path d="M410 150 L432 120 H378 V150 Z" fill="#e59866" fill-opacity="0.6"/>
+  <!-- V-bit outline at the left wall -->
+  <path d="M170 20 L170 70 L230 150 L290 70 L290 20" fill="none" stroke="#c0392b" stroke-width="2" stroke-dasharray="6 4"/>
+  <!-- depth arrow -->
+  <line x1="505" y1="70" x2="505" y2="150" stroke="#333" marker-start="url(#a)" marker-end="url(#a)"/>
+  <line x1="410" y1="150" x2="520" y2="150" stroke="#333" stroke-dasharray="3 3"/>
+  <text x="512" y="115">FlatDepth</text>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0 0 L10 5 L0 10 z" fill="#333"/></marker></defs>
+  <text x="140" y="15" fill="#c0392b">V-bit: walls, sharp corners</text>
+  <text x="262" y="175" fill="#1f618d">end mill: the floor</text>
+  <text x="150" y="195" fill="#a04000">V-bit rest: where the end mill cannot reach</text>
+  <text x="24" y="62" fill="#555">board surface (Start Depth)</text>
+</svg>

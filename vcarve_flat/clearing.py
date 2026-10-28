@@ -30,7 +30,8 @@ def _occ_offset(face, distance: float) -> list:
     """OCC offset of face. makeOffset2D gets some faces with holes wrong (1.0 drops or shrinks the
     holes, 1.1 returns a circular hole as a face of its own), so it is checked against the offset done
     one wire at a time: the outer region offset by distance, minus the holes offset by -distance. The
-    whole-face result is kept where they agree (its loop order and start points are v1's)."""
+    whole-face result is kept where they agree (its loop order and start points are v1's). Faces with
+    holes and curves other than lines and arcs get only the per-wire offset."""
     if not isinstance(face, Part.Face):
         return face.makeOffset2D(distance, join=0).Faces
 
@@ -42,10 +43,12 @@ def _occ_offset(face, distance: float) -> list:
                 return []  # vanished
             raise
 
-    try:
-        whole = offset(face, distance)
-    except (App.Base.CADKernelError, ValueError):
-        whole = None
+    whole = None
+    if len(face.Wires) == 1 or all(isinstance(e.Curve, (Part.Line, Part.Circle)) for e in face.Edges):
+        try:  # OCC 7.8's whole-face offset segfaults on some B-spline faces with holes (font letters)
+            whole = offset(face, distance)
+        except (App.Base.CADKernelError, ValueError):
+            pass
     try:
         outer = offset(Part.Face(_split_circles(face.OuterWire)), distance)
         holes = [g for w in face.Wires if not w.isSame(face.OuterWire)
@@ -80,10 +83,11 @@ def corners(face):
 
 def inner_corners(faces):
     """(vertex, unit tangents pointing away from it along its two edges) at each corner of faces
-    whose outside is a sector under 180 degrees."""
+    whose outside is a sector under 180 degrees. A cusp (both edges leave along one tangent, as at the
+    top of a heart) has no mitre and is skipped."""
     for face in faces:
         for c, u, convex in corners(face):
-            if not convex:
+            if not convex and u[0].dot(u[1]) < 0.9998:
                 yield c, u
 
 
