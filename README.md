@@ -6,6 +6,9 @@ cuts the sharp edges and the narrow strokes, the end mill removes the wide flat 
 
 Supported FreeCAD versions: 1.0.2, 1.1.4 and 26.3rc2 (minimum 1.0.0).
 
+**New here?** The [user guide](docs/guide/Home.md) covers installation and walks through carving a sign,
+an inlay and a photo, with screenshots.
+
 ## Install
 
 Symlink the repository into your FreeCAD user Mod directory. Find that directory by running
