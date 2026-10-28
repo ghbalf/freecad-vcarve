@@ -4,6 +4,12 @@ All notable changes to V-Carve Flat. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-10-28
+
+### Fixed
+- FreeCAD 1.0 no longer crashes now and then while an operation runs in the GUI: its PySide2 can hand
+  Esc watching a stale wrapper of a deleted widget, such as a closed task panel's buttons, as the event.
+
 ## [0.4.1] - 2026-10-28
 
 ### Fixed
@@ -88,6 +94,7 @@ All notable changes to V-Carve Flat. The format follows [Keep a Changelog](https
   step over, allowance), and a command that creates both ops as a pair.
 - GUI commands, task panels and CAM toolbar integration; tested on FreeCAD 1.0.2, 1.1.x and 26.3.
 
+[0.4.2]: https://github.com/ghbalf/freecad-vcarve/releases/tag/v0.4.2
 [0.4.1]: https://github.com/ghbalf/freecad-vcarve/releases/tag/v0.4.1
 [0.4.0]: https://github.com/ghbalf/freecad-vcarve/releases/tag/v0.4.0
 [0.3.0]: https://github.com/ghbalf/freecad-vcarve/releases/tag/v0.3.0
