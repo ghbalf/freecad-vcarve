@@ -49,6 +49,14 @@ def _is_vbit_tc(obj) -> bool:
     return is_tool_controller(tc) and tool_shape(tc.Tool) == "VBit"
 
 
+def _follow_depth(obj):
+    """Make LineSpacing the V-bit's groove width at MaxDepth plus 5 %, as an expression; a new V-bit sets it anew."""
+    if _is_vbit_tc(obj):
+        vbit = tool_vbit(obj.ToolController)
+        obj.setExpression("LineSpacing", f"({vbit.tip_diameter:g} mm + 2 * min(MaxDepth; {vbit.cone_height:.6g} mm)"
+                                         f" * tan({math.degrees(vbit.half_angle):g} deg)) * 1.05")
+
+
 def _vector_lines(objs, deflection) -> list:
     """XY polylines of the edges of objs, chained where they meet."""
     lines = []
@@ -84,14 +92,12 @@ class ObjectVCarvePhoto(PathOp.ObjectOp):
             planes = chosen or planes
         if len(planes) == 1:
             obj.ImagePlane = planes[0]
-        if _is_vbit_tc(obj):
-            vbit = tool_vbit(obj.ToolController)  # the groove width at Max Depth plus 5 %, as an expression
-            obj.setExpression("LineSpacing", f"({vbit.tip_diameter:g} mm + 2 * min(MaxDepth; {vbit.cone_height:.6g} mm)"
-                                             f" * tan({math.degrees(vbit.half_angle):g} deg)) * 1.05")
+        _follow_depth(obj)
 
     def opOnChanged(self, obj, prop):
         if prop == "ToolController" and "Restore" not in obj.State:
             check_tool_controller(obj)
+            _follow_depth(obj)
 
     def isToolSupported(self, obj, tool):
         return tool_shape(tool) == "VBit"

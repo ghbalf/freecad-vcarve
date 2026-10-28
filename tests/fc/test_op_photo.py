@@ -125,6 +125,17 @@ class OpPhotoTests(unittest.TestCase):
         width = self.vbit.tip_diameter + 2 * 1.5 * math.tan(self.vbit.half_angle)
         self.assertAlmostEqual(op.LineSpacing.Value, width * 1.05, places=6)
 
+    def test_spacing_follows_a_vbit_chosen_later(self):
+        self.job_over()
+        op = self.make_op(self.plane(40, 20, halves(40, 20)))
+        op.ToolController = self.mill  # as if made with the mill: no formula yet
+        op.setExpression("LineSpacing", None)
+        op.ToolController = self.tc
+        op.MaxDepth = 1.5
+        self.doc.recompute()
+        width = self.vbit.tip_diameter + 2 * 1.5 * math.tan(self.vbit.half_angle)
+        self.assertAlmostEqual(op.LineSpacing.Value, width * 1.05, places=6)
+
     def test_hatch_reaches_full_depth(self):
         self.job_over()
         op = self.make_op(self.plane(40, 20, np.zeros((20, 40, 3), np.uint8)), Pattern="Hatch",

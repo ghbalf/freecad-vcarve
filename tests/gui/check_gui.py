@@ -213,6 +213,15 @@ def check_photo(doc, job):
     assert abs(op.MaxDepth.Value - 1.5) < 1e-9, op.MaxDepth
     shown = form.LineSpacing.property("rawValue")  # the spacing expression follows at once, field included
     assert op.LineSpacing.Value < before and abs(shown - op.LineSpacing.Value) < 1e-6, (before, op.LineSpacing, shown)
+    from vcarve_flat.compat import tool_shape
+    vtc = op.ToolController
+    op.ToolController = next(t for t in job.Tools.Group if tool_shape(t.Tool) == "Endmill")
+    op.setExpression("LineSpacing", None)  # as if made with the mill
+    op.LineSpacing = 7
+    op.ToolController = vtc  # a V-bit picked in the panel brings the formula, the field shows it
+    assert "LineSpacing" in dict(op.ExpressionEngine), op.ExpressionEngine
+    assert form.LineSpacing.isReadOnly() and abs(form.LineSpacing.property("rawValue") - shown) < 1e-6, \
+        form.LineSpacing.property("rawValue")
 
     def hidden():
         fields = ("Angle", "HatchAngle", "LineSpacing", "VectorsBox", "BandAverage")

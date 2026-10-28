@@ -370,3 +370,9 @@ class PhotoOpPage(_Page):
         self.form.Pattern.currentIndexChanged.connect(self._show_pattern)
         self.form.addVectors.clicked.connect(self._add_vectors)
         self.form.removeVectors.clicked.connect(self._remove_vectors)
+
+    def updateData(self, obj, prop):
+        if prop == "ToolController":  # a new V-bit brings its own spacing formula
+            for spin in getattr(self, "spins", []):
+                if spin.prop == "LineSpacing":
+                    _show(spin)

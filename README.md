@@ -180,9 +180,9 @@ Each groove is cut at depth = darkness × `MaxDepth`, where darkness is 0 for wh
 linear (not sRGB) light scale, so black always reaches `MaxDepth`. The bit lifts out where the depth is
 under `MinDepth`. A groove is tip + 2·depth·tan(half angle) wide. When that is wider than `LineSpacing`
 at `MaxDepth`, neighbouring grooves merge into a flat dark area and the op warns. The default spacing
-is an expression: the groove width at `MaxDepth` plus 5 %, filled in from the V-bit when the op is
-created, so it follows `MaxDepth`. After switching to another V-bit, clear the expression or edit its
-numbers.
+is an expression: the groove width at `MaxDepth` plus 5 %, filled in from the op's V-bit, so it
+follows `MaxDepth`. Picking a V-bit (also a different one) fills it in anew, replacing a spacing you
+typed; clear the expression (f(x) button) after that to set your own.
 
 Patterns (group "V-Carve Photo"):
 
