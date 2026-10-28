@@ -57,6 +57,16 @@ def _follow_depth(obj):
                                          f" * tan({math.degrees(vbit.half_angle):g} deg)) * 1.05")
 
 
+def _faced_below(obj) -> list:
+    """The active MillFace ops before obj in its Job that face below obj's Start Depth."""
+    from Path.Op.MillFace import ObjectFace
+    job = PathUtils.findParentJob(obj)
+    ops = list(job.Operations.Group) if job else []
+    before = ops[:ops.index(obj)] if obj in ops else []
+    return [o for o in before if isinstance(getattr(o, "Proxy", None), ObjectFace) and o.Active
+            and o.FinalDepth.Value < obj.StartDepth.Value - 1e-6]
+
+
 def _vector_lines(objs, deflection) -> list:
     """XY polylines of the edges of objs, chained where they meet."""
     lines = []
@@ -110,6 +120,9 @@ class ObjectVCarvePhoto(PathOp.ObjectOp):
         if not _is_vbit_tc(obj):
             Path.Log.error(f"{obj.Label}: the tool controller must use a V-bit")
             return
+        for face in _faced_below(obj):
+            Path.Log.warning(f"{obj.Label}: {face.Label} faces the stock down to {face.FinalDepth.Value:g} mm, below "
+                             f"Start Depth {obj.StartDepth.Value:g} mm; set Start Depth to the faced surface")
         plane = obj.ImagePlane
         if plane is None:
             Path.Log.error(f"{obj.Label}: no image plane selected")

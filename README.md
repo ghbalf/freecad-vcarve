@@ -175,6 +175,10 @@ shallow ones or none. It suits light, close-grained hardwood such as maple.
    transparent pixels stay uncut, even with `Invert`.
 3. Create a CAM Job with a V-bit tool controller, select the image plane and run **V-Carve Photo**
    (with a single image plane in the document it is picked anyway; otherwise pick it in the task panel).
+4. **Facing the board first?** CAM's MillFace needs a face picked under Base Geometry and does nothing
+   without one, so a sketch-only Job needs a solid for the board (e.g. a Part Cube with its top at the
+   faced height) whose top face you pick. Then set the photo's `StartDepth` to the faced surface: it
+   defaults to the stock top. The op warns when a MillFace before it faces below its `StartDepth`.
 
 Each groove is cut at depth = darkness × `MaxDepth`, where darkness is 0 for white and 1 for black on a
 linear (not sRGB) light scale, so black always reaches `MaxDepth`. The bit lifts out where the depth is

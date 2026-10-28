@@ -125,6 +125,21 @@ class OpPhotoTests(unittest.TestCase):
         width = self.vbit.tip_diameter + 2 * 1.5 * math.tan(self.vbit.half_angle)
         self.assertAlmostEqual(op.LineSpacing.Value, width * 1.05, places=6)
 
+    def test_facing_below_start_depth_warns(self):
+        import Path.Op.MillFace as MillFace
+        self.job_over()
+        with mock.patch("PathScripts.PathUtils.findToolController", return_value=self.mill):
+            face = MillFace.Create("Facing", parentJob=self.job)
+        face.setExpression("FinalDepth", None)
+        face.FinalDepth = self.top - 1
+        op = self.make_op(self.plane(40, 20, halves(40, 20)))
+        self.assertTrue(self.logged(self.warn, "Facing faces the stock down to"))
+        self.warn.reset_mock()
+        op.setExpression("StartDepth", None)
+        op.StartDepth = self.top - 1  # carved into the faced surface
+        self.doc.recompute()
+        self.assertFalse(self.logged(self.warn, "faces the stock"))
+
     def test_spacing_follows_a_vbit_chosen_later(self):
         self.job_over()
         op = self.make_op(self.plane(40, 20, halves(40, 20)))
