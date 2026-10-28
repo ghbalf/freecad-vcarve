@@ -20,6 +20,8 @@ _COMMANDS = [
      QT_TRANSLATE_NOOP("CAM_VCarveInlay", "Set up a V-carve inlay: a new Job for the pocket and a new Job for the plug")),
     ("CAM_VCarveFit", "vcarve_fit.svg", QT_TRANSLATE_NOOP("CAM_VCarveFit", "Check Inlay Fit"),
      QT_TRANSLATE_NOOP("CAM_VCarveFit", "Show where the seated plug would hit the pocket (red) or leave a void (blue)")),
+    ("CAM_VCarvePhoto", "vcarve_photo.svg", QT_TRANSLATE_NOOP("CAM_VCarvePhoto", "V-Carve Photo"),
+     QT_TRANSLATE_NOOP("CAM_VCarvePhoto", "V-carve a FreeCAD image plane as grooves whose depth follows its darkness")),
 ]
 
 

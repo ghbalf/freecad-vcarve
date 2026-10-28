@@ -4,6 +4,11 @@ All notable changes to V-Carve Flat. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Added
+- **V-Carve Photo** operation: carves a FreeCAD image plane as V-grooves whose depth follows its
+  darkness, along parallel lines, two crossed line sets (Hatch) or custom vectors such as imported
+  Inkscape paths, with contrast and invert controls.
+
 ### Changed
 - The plug's flat-tip limit at sharp, narrow inner corners (such as a counter's mirrored tip) is
   documented: up to 0.023 mm over about 0.004 mm² with a 0.1 mm tip, none with a pointed bit.
