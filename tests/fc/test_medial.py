@@ -227,6 +227,28 @@ class ClearingTests(unittest.TestCase):
         if not checked:
             self.skipTest("makeOffset2D is wrong for faces with holes in this FreeCAD")
 
+    def test_offset_bspline_face_with_hole_no_crash(self):
+        # The floor of the "a" in "Maple" (Ubuntu Bold, 25 mm): OCC 7.8's whole-face makeOffset2D
+        # segfaults on it (1.1.4, 26.3), which killed FreeCAD in V-Carve Pair
+        face = Part.read(os.path.join(os.path.dirname(__file__), "data", "maple_a_floor.brep")).Faces[0]
+        for _ in range(3):  # headless FreeCAD turns the first segfault into an exception
+            got = offset_faces([face], -0.6273502691896258)
+            self.assertEqual([len(f.Wires) for f in got], [2])
+
+    def test_cusp_corner(self):
+        # A heart whose two top arcs meet with one tangent: a zero-degree inner corner, where the corner
+        # kites normalized a null vector and the plug's valleys divided by zero
+        V = App.Vector
+        edges = [Part.ArcOfCircle(Part.Circle(V(-15, 0, 0), V(0, 0, 1), 15), 0, math.pi).toShape(),
+                 Part.LineSegment(V(-30, 0, 0), V(0, -38, 0)).toShape(),
+                 Part.LineSegment(V(0, -38, 0), V(30, 0, 0)).toShape(),
+                 Part.ArcOfCircle(Part.Circle(V(15, 0, 0), V(0, 0, 1), 15), 0, math.pi).toShape()]
+        face, = faces_from_loops("Heart", [Part.Wire(Part.__sortEdges__(edges))])
+        floor = offset_faces([face], -2, sharp=True)
+        self.assertEqual(len(floor), 1)
+        self.assertLess(floor[0].Area, face.Area)
+        self.assertEqual(medial.corner_valleys([face], VBit(6, 60, 0.1), 0, 3), [])
+
     def test_offset_zero(self):
         self.assertEqual(offset_faces([RECT], 0), [RECT])
 
