@@ -4,6 +4,18 @@ All notable changes to V-Carve Flat. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-28
+
+### Fixed
+- FreeCAD 1.1.4 and 26.3 no longer crash when carving some bold font letters with holes (OCC 7.8's
+  whole-face offset segfaulted on their B-spline outlines).
+- A cusp, where two curves meet along one tangent (the top of a heart drawn from two half circles), no
+  longer fails the V-carve ("Cannot normalize null vector") or the plug ("float division by zero").
+
+### Added
+- User guide in `docs/guide`: installation, walk-throughs of a sign, an inlay and a photo with
+  screenshots, and troubleshooting.
+
 ## [0.4.0] - 2026-10-28
 
 ### Added
@@ -76,6 +88,7 @@ All notable changes to V-Carve Flat. The format follows [Keep a Changelog](https
   step over, allowance), and a command that creates both ops as a pair.
 - GUI commands, task panels and CAM toolbar integration; tested on FreeCAD 1.0.2, 1.1.x and 26.3.
 
+[0.4.1]: https://github.com/ghbalf/freecad-vcarve/releases/tag/v0.4.1
 [0.4.0]: https://github.com/ghbalf/freecad-vcarve/releases/tag/v0.4.0
 [0.3.0]: https://github.com/ghbalf/freecad-vcarve/releases/tag/v0.3.0
 [0.2.0]: https://github.com/ghbalf/freecad-vcarve/releases/tag/v0.2.0
