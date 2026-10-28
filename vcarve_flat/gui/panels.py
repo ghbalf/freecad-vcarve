@@ -19,6 +19,11 @@ _TC_EDITOR = hasattr(PathOpGui.TaskPanelPage, "updateToolControllerEditorVisibil
 _DEPTHS_PAGE = hasattr(PathOpGui, "TaskPanelDepthsPage")  # 26.3+: the depths are on the heights page
 
 
+def _show(spin):
+    """Redraw a CAM QuantitySpinBox from its property (1.0 names it updateSpinBox)."""
+    (getattr(spin, "updateWidget", None) or spin.updateSpinBox)()
+
+
 def _row(grid, label, widget):
     r = grid.rowCount()
     grid.addWidget(QtGui.QLabel(label), r, 0)
@@ -64,15 +69,22 @@ class _Page(PathOpGui.TaskPanelPage):
         self.spins = [PathGuiUtil.QuantitySpinBox(getattr(self.form, p), obj, p) for p in self.quantities]
 
     def getFields(self, obj):
-        for spin in self.spins:
-            spin.updateProperty()
+        exprs = dict(obj.ExpressionEngine)
+        for spin in self.spins:  # in field order, so an expression sees the fields above it
+            if spin.prop not in exprs:
+                spin.updateProperty()
+                continue
+            value = App.Units.Quantity(obj.evalExpression(exprs[spin.prop]))  # never write the stale field back
+            if abs(getattr(obj, spin.prop).Value - value.Value) > 1e-9:
+                setattr(obj, spin.prop, value)
+            _show(spin)
         if not _TC_PAGE:
             self.updateToolController(obj, self.form.toolController)
             self.updateCoolant(obj, self.form.coolantController)
 
     def setFields(self, obj):
         for spin in self.spins:
-            (getattr(spin, "updateWidget", None) or spin.updateSpinBox)()  # 1.0: updateSpinBox
+            _show(spin)
         if not _TC_PAGE:
             self.setupToolController(obj, self.form.toolController)
             self.setupCoolant(obj, self.form.coolantController)

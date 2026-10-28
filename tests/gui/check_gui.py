@@ -207,6 +207,12 @@ def check_photo(doc, job):
     grid = form.layout()
     rows = [grid.getItemPosition(grid.indexOf(getattr(form, p)))[0] for p in ("MaxDepth", "MinDepth", "LineSpacing")]
     assert rows == sorted(rows), rows  # the depths come before the spacing that follows them
+    before = op.LineSpacing.Value
+    form.MaxDepth.setProperty("rawValue", 1.5)
+    page.pageGetFields()
+    assert abs(op.MaxDepth.Value - 1.5) < 1e-9, op.MaxDepth
+    shown = form.LineSpacing.property("rawValue")  # the spacing expression follows at once, field included
+    assert op.LineSpacing.Value < before and abs(shown - op.LineSpacing.Value) < 1e-6, (before, op.LineSpacing, shown)
 
     def hidden():
         fields = ("Angle", "HatchAngle", "LineSpacing", "VectorsBox", "BandAverage")
