@@ -78,6 +78,11 @@ def check_progress(doc):
     QtCore.QTimer.singleShot(0, lambda: fired.append(1))
     QtCore.QTimer.singleShot(300, press_esc)
     assert spin(progress) < 2 and fired and not asked, (fired, asked)
+    # PySide2 5.15 (FreeCAD 1.0) can hand the Esc filter a stale wrapper as the event, such as that of the button box
+    # a closed CAM task panel kept; reading it as an event crashed FreeCAD
+    with progress.task("GUI check"):
+        esc = next(c.cell_contents for c in progress._gui[1].__closure__ if type(c.cell_contents).__name__ == "Esc")
+        assert esc.eventFilter(Gui.getMainWindow(), QtGui.QDialogButtonBox()) is False
 
     order = []  # the first object recomputed gets the Esc
 

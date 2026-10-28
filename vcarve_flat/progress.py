@@ -35,6 +35,8 @@ def _watch_gui(restart):
     class Esc(QtCore.QObject):
         def eventFilter(self, obj, event):
             global _cancelled
+            if not isinstance(event, QtCore.QEvent):  # PySide2 5.15 can pass a deleted widget's stale wrapper, at
+                return False  # whose address the event lives; reading it as an event crashes FreeCAD 1.0
             if event.type() == QtCore.QEvent.KeyPress and event.key() == QtCore.Qt.Key_Escape:
                 _cancelled = True
                 return True  # FreeCAD's sequencer would ask whether to abort the rest of a recompute
