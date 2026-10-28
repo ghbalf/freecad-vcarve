@@ -4,10 +4,19 @@ All notable changes to V-Carve Flat. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-28
+
 ### Added
 - **V-Carve Photo** operation: carves a FreeCAD image plane as V-grooves whose depth follows its
   darkness, along parallel lines, two crossed line sets (Hatch) or custom vectors such as imported
-  Inkscape paths, with contrast and invert controls.
+  Inkscape paths, with contrast and invert controls. Black reaches `MaxDepth`; transparent pixels stay
+  uncut, also with `Invert`. The image is carved as the top view shows it.
+- `LineSpacing` defaults to the V-bit's groove width at `MaxDepth` plus 5 %, as an expression, so it
+  follows `MaxDepth` live in the task panel and is filled in anew when a V-bit is picked.
+- `BandAverage` (off by default): Lines and Hatch average the image across each line's band instead of
+  reading it under the line; `SampleStep` also averages finer image pixels.
+- Warnings when grooves at `MaxDepth` merge, when the image reaches outside the stock, and when a MillFace
+  before the photo op faces below its `StartDepth`.
 
 ### Changed
 - The plug's flat-tip limit at sharp, narrow inner corners (such as a counter's mirrored tip) is
@@ -67,5 +76,6 @@ All notable changes to V-Carve Flat. The format follows [Keep a Changelog](https
   step over, allowance), and a command that creates both ops as a pair.
 - GUI commands, task panels and CAM toolbar integration; tested on FreeCAD 1.0.2, 1.1.x and 26.3.
 
+[0.4.0]: https://github.com/ghbalf/freecad-vcarve/releases/tag/v0.4.0
 [0.3.0]: https://github.com/ghbalf/freecad-vcarve/releases/tag/v0.3.0
 [0.2.0]: https://github.com/ghbalf/freecad-vcarve/releases/tag/v0.2.0
