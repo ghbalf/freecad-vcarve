@@ -57,10 +57,9 @@ with its top at the faced height) to the Job and pick its top face. Then set the
 
 ## Inlays
 
-**The fit check shows red marks.** See [Inlays: reading the fit check](Inlays.md#2-check-the-fit). A mark of a
-few hundredths of a millimetre at a sharp, narrow inner corner with a flat-tipped V-bit is expected and
-absorbed by the glue gap. A collision of a millimetre at a cusp (two curves meeting along one tangent, as at
-the top of a heart drawn from two half circles) is not: see [Inlays: no cusps](Inlays.md#example-a-heart).
+**The fit check shows red marks.** See [Inlays: reading the fit check](Inlays.md#2-check-the-fit). A collision
+of about a millimetre at a cusp (two curves meeting along one tangent, as at the top of a heart drawn from two
+half circles) comes from the design: see [Inlays: no cusps](Inlays.md#example-a-heart).
 
 **"the plug Job's stock … is thinner than …"** or **"the stock margin beyond the plug is narrower than
 the end mill"**. Set the plug Job's stock to the real plug board; see
