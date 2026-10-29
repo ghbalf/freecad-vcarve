@@ -453,10 +453,11 @@ class FitObjectTests(unittest.TestCase):
             raise progress.Cancelled
 
         for check in (mock.Mock(return_value=failed), cancel):
-            with mock.patch.object(fitcheck, "check", check):
+            with mock.patch.object(fitcheck, "check", check), mock.patch.object(App.Console, "PrintMessage") as msg:
                 self.assertIsNone(fit_object.run(n.plug))
             self.assertEqual(self.fits(), [old])
         self.err.assert_called_once_with("S: out of date, recompute it first")
+        msg.assert_called_once_with("Check Inlay Fit cancelled\n")  # shown: Path.Log.notice is hidden by default
 
     def test_run_cancel_while_marking(self):
         """Cancel while the squares are built: no Fit object half made, no transaction left open."""

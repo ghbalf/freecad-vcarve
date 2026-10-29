@@ -4,6 +4,10 @@ All notable changes to V-Carve Flat. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Fixed
+- Cancelling Check Inlay Fit or V-Carve Inlay with Esc now says so in the report view; the message was
+  logged at a level FreeCAD hides by default.
+
 ## [0.4.2] - 2026-10-28
 
 ### Fixed

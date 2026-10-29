@@ -140,12 +140,12 @@ class InlayTests(unittest.TestCase):
         self.doc.UndoMode = 1
         values = dict(vtc=self.vtc, etc=self.etc, pocket_depth=3.0, glue_gap=0.2)
         names = [o.Name for o in self.doc.Objects]
-        notice = mock.patch.object(Path.Log, "notice").start()
+        msg = mock.patch.object(App.Console, "PrintMessage").start()
         patch, _ = indicator(abort_at=3)
         self.assertIsNone(run_inlay(self.job, self.sk, values))
         patch.stop()
         self.assertEqual([o.Name for o in self.doc.Objects], names)
-        self.assertEqual(notice.call_args_list[-1], mock.call("V-Carve Inlay cancelled"))
+        self.assertEqual(msg.call_args_list[-1], mock.call("V-Carve Inlay cancelled\n"))  # shown, unlike a notice
         qjob, pocket, pjob, plug = run_inlay(self.job, self.sk, values)  # without Cancel: kept, one undo step
         self.assertEqual(len([o for o in self.doc.Objects if hasattr(o, "Operations")]), 3)
         self.assertEqual([o.Name for o in (*pocket, *plug) if "Invalid" in o.State], [])

@@ -132,7 +132,7 @@ def run_inlay(job, sketch, values, attach=None):
     except progress.Cancelled:
         doc.abortTransaction()
         doc.recompute()
-        Path.Log.notice("V-Carve Inlay cancelled")
+        App.Console.PrintMessage("V-Carve Inlay cancelled\n")  # a notice is hidden by default
         return None
     except Exception:
         doc.abortTransaction()
