@@ -25,6 +25,13 @@ def pyside2_crash(out):
     return "Program received signal" in out and "libpyside2" in out
 
 
+def cam_stale_item(out):
+    """FreeCAD 26.3's CAM tool controller editor leaves a stale wrapper of a deleted layout item behind on every op
+    panel it opens (its Feeds and Speeds button row); a widget later created at the same address comes back as that
+    QSpacerItem or QWidgetItem and breaks the panel now and then, which earns that check a rerun."""
+    return any(f"'PySide6.QtWidgets.{t}' object has no attribute" in out for t in ("QSpacerItem", "QWidgetItem"))
+
+
 @pytest.mark.parametrize(**appruns())
 def test_gui(apprun, fc_env, tmp_path):
     if apprun is None:
@@ -35,7 +42,8 @@ def test_gui(apprun, fc_env, tmp_path):
         return subprocess.run([apprun, "freecad", "-u", str(cfg), str(CHECK)], capture_output=True, text=True,
                               timeout=300, env=fc_env, cwd=tmp_path)
     res = run()
-    if pyside2_crash(res.stdout + res.stderr):
+    out = res.stdout + res.stderr
+    if "GUI-CHECK-OK" not in res.stdout and (pyside2_crash(out) or cam_stale_item(out)):
         res = run()
     out = res.stdout + res.stderr
     assert "GUI-CHECK-OK" in res.stdout, out[-6000:]
@@ -47,3 +55,10 @@ def test_pyside2_crash():
     assert pyside2_crash(stack)
     assert not pyside2_crash(stack.replace("libpyside2", "libFreeCADApp"))  # a crash outside PySide2: no second chance
     assert not pyside2_crash("AssertionError: from libpyside2")  # a failed check, not a crash
+
+
+def test_cam_stale_item():
+    assert cam_stale_item("<class 'AttributeError'>: 'PySide6.QtWidgets.QSpacerItem' object has no attribute 'hide'")
+    assert cam_stale_item("AttributeError: 'PySide6.QtWidgets.QWidgetItem' object has no attribute 'setTextFormat'")
+    assert not cam_stale_item("AttributeError: 'PySide6.QtWidgets.QCheckBox' object has no attribute 'hide'")
+    assert not cam_stale_item("AssertionError: RestOnly not shown")
