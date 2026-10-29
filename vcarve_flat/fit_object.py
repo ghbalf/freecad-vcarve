@@ -160,7 +160,7 @@ def run(plug, attach=None):
             result = fit.check(plug)
             shape = None if result.error else marks(plug, result)
     except progress.Cancelled:
-        Path.Log.notice("Check Inlay Fit cancelled")
+        App.Console.PrintMessage("Check Inlay Fit cancelled\n")  # a notice is hidden by default
         return None
     if result.error:
         Path.Log.error(result.error)

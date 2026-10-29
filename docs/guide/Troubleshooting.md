@@ -82,7 +82,8 @@ simulates straight (G1) moves only, which is what the addon's ops produce.
 Large designs, small `StepLength` or `SampleStep` values and fine photos take a while. The status bar
 shows a progress bar; press **Esc** to cancel (there is no confirmation). In a recompute, Esc cancels the
 running op and every later V-carve op of that recompute. A cancelled op keeps an empty path and an error
-mark; recompute it to try again.
+mark; recompute it to try again. A cancelled Check Inlay Fit or V-Carve Inlay changes nothing and says
+"… cancelled" in the report view.
 
 ## Known limitations
 
