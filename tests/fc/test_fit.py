@@ -174,6 +174,16 @@ class FitTests(unittest.TestCase):
         gap = seated(n, pts, (30.31, 27.91)).gap  # the design bbox x 17.21..43.41, y 15.41..40.41
         self.assertGreater(gap.min(), -TOL, pts[gap.argmin()])
 
+    def test_fit_counter_tip(self):
+        """The flat tip's centre stays r_t / sin(a/2) short of the plug's acute inner corner at Z_v (0.15 mm at
+        the counter's 38 degree tip); a pass along the bisector cuts that wedge (the plug collided by 0.027 mm)."""
+        n = make_inlay(self.doc, [[(x / 2, y / 2) for x, y in loop] for loop in (A_OUTER, A_HOLE)], tip=0.1)
+        self.assertFalse(self.err.called, self.err.call_args_list)
+        x, y = np.meshgrid(np.arange(30.02, 30.62, 0.005), np.arange(34.16, 34.66, 0.005))  # the tip (30.32, 34.56)
+        pts = np.column_stack([x.ravel(), y.ravel()])
+        gap = seated(n, pts, (30.31, 27.91)).gap
+        self.assertGreater(gap.min(), -TOL, pts[gap.argmin()])
+
 class CheckTests(unittest.TestCase):
     def setUp(self):
         self.doc = App.newDocument("check")

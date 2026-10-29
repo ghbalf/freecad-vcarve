@@ -90,9 +90,9 @@ would come to a sharp apex, land on that flat bottom and lift the plug. The **ri
 cuts each plug ridge flat where it is narrower than the tip. It runs once after the plug's last level and
 makes no path for a pointed bit. It leaves small gaps at convex corners, which the glue fills.
 
-The flat tip also cannot reach into a sharp, narrow inner corner of the plug's cut area, such as the mirrored
-tip of a letter's counter. It leaves a sliver of a few hundredths of a millimetre that the glue gap almost
-entirely absorbs; the fit check may show it as a tiny red mark. **Pointed V-bits are best for inlays.**
+At a sharp inner corner of the plug's cut area, such as the mirrored tip of a letter's counter, an extra pass
+along the corner's bisector lets the flat tip reach into the corner. It leaves a sliver of void there, less
+than the tip radius wide, which the glue fills. **Pointed V-bits are still best for inlays.**
 
 Narrow strokes, narrower than 2·(r_t + P·tan(half angle)) with r_t the tip radius, get a V bottom in the
 pocket and no floor gap: the plug's ridge lands on it whatever G is. G protects only the wide, flat areas.

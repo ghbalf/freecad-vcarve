@@ -118,12 +118,19 @@ def ridge_polylines(face, vbit, z_base, height, *, deflection, colinear_deg, ste
 def corner_valleys(faces, vbit, z_base, height) -> list:
     """The plug's valleys mirroring the ridges a sharp inner corner leaves in the pocket: down each inner
     corner's bisector from the plug top z_base + height to the corner at z_base. The pocket's ridge
-    point at depth d below its top lies d t / sin(a/2) along the bisector (a: the outside's angle)."""
+    point at depth d below its top lies d t / sin(a/2) along the bisector (a: the outside's angle).
+    A flat tip's centre reaches z_base no closer than r_t / sin(a/2) to the corner, so the valley goes on
+    at z_base along the bisector to there: the tip cuts that wedge, every point of it within r_t."""
     paths = []
     for c, u in inner_corners(faces):
         m = (u[0] + u[1]).normalize()
-        top = c - m * (height * math.tan(vbit.half_angle) / math.sqrt((1 - u[0].dot(u[1])) / 2))
-        paths.append(np.array([(top.x, top.y, z_base + height), (c.x, c.y, z_base)]))
+        sin = math.sqrt((1 - u[0].dot(u[1])) / 2)
+        top = c - m * (height * math.tan(vbit.half_angle) / sin)
+        path = [(top.x, top.y, z_base + height), (c.x, c.y, z_base)]
+        if vbit.tip_radius > 0:
+            end = c + m * (vbit.tip_radius / sin)
+            path.append((end.x, end.y, z_base))
+        paths.append(np.array(path))
     return paths
 
 

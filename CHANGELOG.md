@@ -7,6 +7,9 @@ All notable changes to V-Carve Flat. The format follows [Keep a Changelog](https
 ### Fixed
 - Cancelling Check Inlay Fit or V-Carve Inlay with Esc now says so in the report view; the message was
   logged at a level FreeCAD hides by default.
+- With a flat-tipped V-bit the plug no longer collides at sharp inner corners of its cut area, such as the
+  mirrored tip of a letter's counter (0.026 mm at a 38° tip with a 0.1 mm tip): the corner's valley pass
+  goes on along the bisector to where the tip's centre can reach the plug floor.
 
 ## [0.4.2] - 2026-10-28
 
