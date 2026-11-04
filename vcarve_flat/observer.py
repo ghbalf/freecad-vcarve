@@ -24,7 +24,8 @@ def _deleted(obj):
 
 
 def _regrouped(group):
-    for op in group.Group:
+    job = next((o for o in group.InList if getattr(o, "Operations", None) == group), None)
+    for op in op_vcarve.job_ops(job):
         if hasattr(op, "RestChain") and not hasattr(op, "VCarveOp"):  # a V-carve or plug op
             _touch_stale(op)
 

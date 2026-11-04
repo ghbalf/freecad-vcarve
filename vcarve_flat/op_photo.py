@@ -15,7 +15,7 @@ from . import photo, progress
 from .compat import tool_shape
 from .geom import limit_depth
 from .image_plane import ImageError, plane_frame, read_rgba, size
-from .op_vcarve import check_tool_controller, is_tool_controller, mm, tool_vbit
+from .op_vcarve import check_tool_controller, is_tool_controller, job_ops, mm, tool_vbit
 from .toolpath import paths_to_commands
 
 _GROUP = "V-Carve Photo"
@@ -60,8 +60,7 @@ def _follow_depth(obj):
 def _faced_below(obj) -> list:
     """The active MillFace ops before obj in its Job that face below obj's Start Depth."""
     from Path.Op.MillFace import ObjectFace
-    job = PathUtils.findParentJob(obj)
-    ops = list(job.Operations.Group) if job else []
+    ops = job_ops(PathUtils.findParentJob(obj))
     before = ops[:ops.index(obj)] if obj in ops else []
     return [o for o in before if isinstance(getattr(o, "Proxy", None), ObjectFace) and o.Active
             and o.FinalDepth.Value < obj.StartDepth.Value - 1e-6]

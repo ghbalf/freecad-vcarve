@@ -86,10 +86,20 @@ def region_sets(obj) -> list:
     return out
 
 
+def job_ops(job) -> list:
+    """The ops of job in order, each seen through its dressups: a dressup takes its op's place in
+    Operations and holds the op (or the next dressup) in its Base link."""
+    ops = []
+    for op in (job.Operations.Group if job else []):
+        while isinstance(getattr(op, "Base", None), App.DocumentObject):  # an op's own Base is a list
+            op = op.Base
+        ops.append(op)
+    return ops
+
+
 def clearance_ops(obj) -> list:
     """The active clearance ops linked to obj (duck-typed on their VCarveOp property)."""
-    job = PathUtils.findParentJob(obj)
-    return [op for op in (job.Operations.Group if job else [])
+    return [op for op in job_ops(PathUtils.findParentJob(obj))
             if getattr(op, "VCarveOp", None) == obj and getattr(op, "Active", True)]
 
 
