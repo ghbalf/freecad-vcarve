@@ -9,7 +9,7 @@ import Path.Op.Gui.Vcarve as PathVcarveGui
 import PathScripts.PathUtils as PathUtils
 from PySide import QtCore, QtGui
 
-from ..op_vcarve import ObjectVCarveFlat
+from ..op_vcarve import ObjectVCarveFlat, job_ops
 from .selection import to_clones
 
 translate = App.Qt.translate
@@ -166,8 +166,7 @@ class ClearanceOpPage(_Page):
         form.RestOnly = _row(grid, translate("CAM_VCarve", "Rest only"), QtGui.QCheckBox())
 
     def _vcarve_ops(self):
-        ops = self.job.Operations.Group if self.job else []
-        return [op for op in ops if isinstance(getattr(op, "Proxy", None), ObjectVCarveFlat)]
+        return [op for op in job_ops(self.job) if isinstance(getattr(op, "Proxy", None), ObjectVCarveFlat)]
 
     def getFields(self, obj):
         super().getFields(obj)

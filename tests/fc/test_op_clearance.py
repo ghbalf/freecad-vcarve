@@ -106,6 +106,18 @@ class ClearanceTests(unittest.TestCase):
         np.testing.assert_allclose(cut_points(vc), cut_points(self.vcarve_without_clearance(vc)))
         self.assertIsNone(op_vcarve.find_clearance_op(vc))
 
+    def test_clearance_behind_dressup_still_found(self):
+        """A dressup on the clearance op takes its place in Operations; the V-carve op must still see it."""
+        from Path.Dressup import Boundary
+        clr, vc = self.pair([NECK])
+        before = vc.Path.toGCode()
+        Boundary.Create(clr)
+        vc.touch()
+        self.doc.recompute()
+        self.assertNotIn(clr, self.job.Operations.Group)
+        self.assertIs(op_vcarve.find_clearance_op(vc), clr)
+        self.assertTrue(vc.Path.toGCode() == before, "V-carve op lost its clearance op behind the dressup")
+
     def test_repoint_touches_old_link(self):
         clr, vc = self.pair([NECK])
         other = self.vcarve_without_clearance(vc)
@@ -215,6 +227,18 @@ class ClearanceTests(unittest.TestCase):
         self.assertEqual((vc.RestChain, rest.RestChain, clr.RestChain), ("0.5,0;2.5,0", "", "0.5,0"))
         self.assertGreater(g1_length(rest), 2 * part)
         self.assertTrue(self.warned("no clearance op before it"), Path.Log.warning.call_args_list)
+
+    def test_reorder_dressed_ops_recomputes(self):
+        from Path.Dressup import Boundary
+        clr, rest, vc = self.rest_chain()
+        dressed = {op: Boundary.Create(op) for op in (clr, rest, vc)}
+        self.doc.recompute()
+        g = self.job.Operations.Group
+        i, j = g.index(dressed[clr]), g.index(dressed[rest])
+        g[i], g[j] = dressed[rest], dressed[clr]
+        self.job.Operations.Group = g
+        self.doc.recompute()
+        self.assertEqual((vc.RestChain, rest.RestChain, clr.RestChain), ("0.5,0;2.5,0", "", "0.5,0"))
 
     def test_observer_installed_once(self):
         clr, _ = self.pair([RECT])
