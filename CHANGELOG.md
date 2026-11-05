@@ -4,6 +4,8 @@ All notable changes to V-Carve Flat. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-11-05
+
 ### Fixed
 - A dressup on a V-Carve Clearance op (for example Boundary, or a keep-out dressup) no longer hides it from
   its V-carve op. The V-carve op used to stop seeing its clearance ops and clear the whole floor with the
